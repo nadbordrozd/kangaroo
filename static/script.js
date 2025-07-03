@@ -14,9 +14,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('agentInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault(); // Prevent new line
             sendMessage('agent');
         }
+        // Allow Shift+Enter for new lines in textarea
     });
 });
 
@@ -62,12 +64,15 @@ function addMessageToChat(sender, message) {
     
     const timestamp = new Date().toLocaleTimeString();
     
+    // Convert line breaks to HTML breaks for proper display
+    const formattedMessage = message.replace(/\n/g, '<br>');
+    
     messageDiv.innerHTML = `
         <div class="message-header">
             <span class="sender">${sender.charAt(0).toUpperCase() + sender.slice(1)}</span>
             <span class="timestamp">${timestamp}</span>
         </div>
-        <div class="message-content">${message}</div>
+        <div class="message-content">${formattedMessage}</div>
     `;
     
     chatMessages.appendChild(messageDiv);
@@ -161,12 +166,13 @@ function updateAISuggestions(suggestions, knowledgeSnippets = []) {
             const suggestionDiv = document.createElement('div');
             suggestionDiv.className = 'suggestion-item';
             
-            // Clean up quotes from the suggestion
+            // Clean up quotes from the suggestion and convert line breaks
             const cleanSuggestion = suggestion.replace(/^"|"$/g, '');
+            const formattedSuggestion = cleanSuggestion.replace(/\n/g, '<br>');
             
             suggestionDiv.innerHTML = `
                 <div class="suggestion-content">
-                    <p>${cleanSuggestion}</p>
+                    <p>${formattedSuggestion}</p>
                 </div>
                 <div class="suggestion-actions">
                     <button class="suggestion-btn use-btn">
