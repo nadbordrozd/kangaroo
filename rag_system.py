@@ -34,7 +34,7 @@ class RAGSystem:
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY not found in environment variables.")
         
-        # Set up models using Settings (LlamaIndex's global configuration)
+        # Set up models using Settings (LlamaIndex's global configuration)git s
         Settings.llm = OpenAI(model="gpt-4", api_key=openai_api_key, temperature=0.1)
         Settings.embed_model = OpenAIEmbedding(
             model="text-embedding-3-large", 
@@ -355,7 +355,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             return f"Error answering question: {e}"
 
     def get_suggestions(self, message: str, conversation_context: List[Dict], sender: str) -> Dict[str, List[str]]:
-        """Generate AI suggestions and retrieve relevant knowledge base snippets."""
+        """Generate AI suggestions and retrieve relevant knowledge base snippets for customer messages."""
         print(f"DEBUG: get_suggestions called")
         print(f"DEBUG: message: '{message}'")
         print(f"DEBUG: sender: '{sender}'")
@@ -369,17 +369,14 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             }
         
         try:
-            # Create context-aware suggestions based on sender type
+            # Only process customer messages - agent messages are handled at Flask level
             if sender == 'customer':
                 print("DEBUG: Customer message - Using RAG to generate agent response suggestions")
                 result = self._generate_customer_suggestions(message, conversation_context)
-            elif sender == 'agent':
-                print("DEBUG: Agent message - Using static suggestions (NO RAG)")
-                result = self._generate_agent_suggestions(message, conversation_context)
             else:
-                print(f"DEBUG: Unknown sender type: {sender}")
+                print(f"DEBUG: Non-customer message blocked (sender: {sender})")
                 result = {
-                    "suggestions": ["Please specify sender type (customer or agent)"],
+                    "suggestions": ["Only customer messages are processed by the AI system"],
                     "knowledge_snippets": []
                 }
             
@@ -406,7 +403,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         Based on the customer's message: "{message}"
         And conversation context: {context}
         
-        Generate 3 helpful suggestions for how an agent might respond to assist this customer.
+        Generate one helpful suggestion for how an agent might respond to assist this customer.
         Focus on being helpful, professional, and solution-oriented.
         """
         print(f"DEBUG: Customer prompt: '{prompt}'")
@@ -423,17 +420,16 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 print(f"DEBUG: Raw customer response: {response}")
                 print(f"DEBUG: Customer response type: {type(response)}")
                 
-                # Extract suggestions
-                response_str = str(response)
+                # Use response directly as single suggestion
+                response_str = str(response).strip()
                 print(f"DEBUG: Customer response as string: '{response_str}'")
                 
-                suggestions = self._parse_suggestions(response_str)
-                final_suggestions = suggestions[:3]  # Return max 3 suggestions (but up to similarity_top_k knowledge snippets)
+                final_suggestions = [response_str]  # Single suggestion
                 
                 # Extract knowledge snippets from source nodes
                 knowledge_snippets = self._extract_knowledge_snippets(response)
                 
-                print(f"DEBUG: Final customer suggestions: {final_suggestions}")
+                print(f"DEBUG: Final customer suggestion: {final_suggestions}")
                 print(f"DEBUG: Knowledge snippets: {knowledge_snippets}")
                 
                 return {
@@ -496,9 +492,8 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             response = Settings.llm.complete(enhanced_prompt)
             response_str = str(response)
             
-            # Step 5: Parse suggestions and create knowledge snippets
-            suggestions = self._parse_suggestions(response_str)
-            final_suggestions = suggestions[:3]
+            # Step 5: Use response directly as single suggestion
+            final_suggestions = [response_str.strip()]
             
             # Create knowledge snippets from filtered nodes
             knowledge_snippets = []
@@ -513,7 +508,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 snippet = f"📄 **{file_name}**\n{chunk_text}"
                 knowledge_snippets.append(snippet)
             
-            print(f"DEBUG: Generated {len(final_suggestions)} suggestions with {len(knowledge_snippets)} reranked snippets")
+            print(f"DEBUG: Generated 1 suggestion with {len(knowledge_snippets)} reranked snippets")
             
             return {
                 "suggestions": final_suggestions,
@@ -529,70 +524,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 "knowledge_snippets": []
             }
 
-    def _generate_agent_suggestions(self, message: str, conversation_context: List[Dict]) -> Dict[str, List[str]]:
-        """Generate suggestions for agent messages without using RAG (no knowledge base retrieval)."""
-        print("DEBUG: _generate_agent_suggestions called (NO RAG)")
-        
-        # Build context from conversation history
-        context = self._build_conversation_context(conversation_context)
-        print(f"DEBUG: Built context: '{context}'")
-        
-        # Generate static suggestions based on common best practices
-        # No RAG retrieval for agent messages
-        try:
-            print("DEBUG: Generating static agent suggestions without RAG...")
-            
-            # Analyze the agent message and context to provide relevant suggestions
-            agent_message_lower = message.lower()
-            
-            suggestions = []
-            
-            # Provide suggestions based on message content and best practices
-            if any(word in agent_message_lower for word in ['sorry', 'apologize', 'apologies']):
-                suggestions = [
-                    "Consider offering a specific solution or next step after the apology.",
-                    "Acknowledge the customer's frustration and provide a timeline for resolution.",
-                    "Follow up with 'What can I do to make this right for you?'"
-                ]
-            elif any(word in agent_message_lower for word in ['understand', 'hear', 'see']):
-                suggestions = [
-                    "Build on this empathy by asking clarifying questions to better understand their needs.",
-                    "Provide specific examples of how you can help resolve their concern.",
-                    "Offer multiple options or solutions when possible."
-                ]
-            elif any(word in agent_message_lower for word in ['help', 'assist', 'support']):
-                suggestions = [
-                    "Be specific about what help you can provide and set clear expectations.",
-                    "Ask if there are any other concerns while you have them on the line.",
-                    "Provide your direct contact information for future assistance."
-                ]
-            elif any(word in agent_message_lower for word in ['thank', 'thanks']):
-                suggestions = [
-                    "Express genuine appreciation and ask if there's anything else you can help with.",
-                    "Reinforce the value of their business and your commitment to service.",
-                    "Invite them to reach out again if they have future questions."
-                ]
-            else:
-                # Default suggestions for general agent communication
-                suggestions = [
-                    "Ensure you're being clear and specific in your communication.",
-                    "Ask open-ended questions to better understand the customer's needs.",
-                    "Provide a clear next step or timeline for any actions you'll take."
-                ]
-            
-            print(f"DEBUG: Generated static agent suggestions: {suggestions}")
-            
-            return {
-                "suggestions": suggestions[:3],  # Return max 3 suggestions
-                "knowledge_snippets": []  # No knowledge snippets for agent messages
-            }
-            
-        except Exception as e:
-            print(f"DEBUG: Exception in _generate_agent_suggestions: {e}")
-            return {
-                "suggestions": [f"Error generating agent suggestions: {e}"],
-                "knowledge_snippets": []
-            }
+
 
     def _extract_knowledge_snippets(self, response) -> List[str]:
         """Extract knowledge base snippets from LlamaIndex response source nodes."""
@@ -654,40 +586,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         print(f"DEBUG: Final context string: '{final_context}'")
         return final_context
 
-    def _parse_suggestions(self, response: str) -> List[str]:
-        """Parse AI response into a list of suggestions."""
-        print(f"DEBUG: _parse_suggestions called with response: '{response}'")
-        print(f"DEBUG: Response length: {len(response)}")
-        
-        # Split response into lines and clean up
-        lines = response.strip().split('\n')
-        print(f"DEBUG: Split into {len(lines)} lines")
-        
-        suggestions = []
-        
-        for i, line in enumerate(lines):
-            print(f"DEBUG: Processing line {i}: '{line}'")
-            line = line.strip()
-            
-            if line and not line.startswith('Based on') and len(line) > 10:
-                print(f"DEBUG: Line passes filters: '{line}'")
-                # Remove numbering and bullet points
-                cleaned_line = line.lstrip('123456789. -•*').strip()
-                print(f"DEBUG: Cleaned line: '{cleaned_line}'")
-                
-                if cleaned_line:
-                    suggestions.append(cleaned_line)
-                    print(f"DEBUG: Added suggestion: '{cleaned_line}'")
-        
-        print(f"DEBUG: Parsed {len(suggestions)} suggestions: {suggestions}")
-        
-        # If no structured suggestions found, return the whole response as one suggestion
-        if not suggestions and response.strip():
-            print("DEBUG: No structured suggestions found, using whole response")
-            suggestions = [response.strip()]
-        
-        print(f"DEBUG: Final parsed suggestions: {suggestions}")
-        return suggestions
+
 
     def chat(self, message: str) -> str:
         """Chat with the system using conversation memory."""
@@ -757,41 +656,4 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             'storage_info': storage_info,
             'use_reranker': self.use_reranker,
             'reranker_model': 'gpt-4o-mini' if self.use_reranker else None
-        }
-
-    def debug_test_system(self):
-        """Test system with debug output."""
-        print("=== DEBUG: Testing RAG System ===")
-        
-        # Test basic question
-        print("\n1. Testing basic question...")
-        result = self.answer_question("What is this knowledge base about?")
-        print(f"Result: '{result}'")
-        
-        # Test suggestions
-        print("\n2. Testing customer suggestions (WITH RAG)...")
-        customer_result = self.get_suggestions(
-            message="I need help with my account",
-            conversation_context=[],
-            sender="customer"
-        )
-        print(f"Customer result (with knowledge retrieval): {customer_result}")
-        
-        # Test agent suggestions  
-        print("\n3. Testing agent suggestions (WITHOUT RAG)...")
-        agent_result = self.get_suggestions(
-            message="I understand your concern",
-            conversation_context=[{"sender": "customer", "message": "I need help with my account"}],
-            sender="agent"
-        )
-        print(f"Agent result (static suggestions only): {agent_result}")
-        
-        print("\n=== DEBUG: Test Complete ===")
-        
-        return {
-            'basic_question': result,
-            'customer_suggestions': customer_result.get('suggestions', []) if isinstance(customer_result, dict) else customer_result,
-            'customer_knowledge_snippets': customer_result.get('knowledge_snippets', []) if isinstance(customer_result, dict) else [],
-            'agent_suggestions': agent_result.get('suggestions', []) if isinstance(agent_result, dict) else agent_result,
-            'agent_knowledge_snippets': agent_result.get('knowledge_snippets', []) if isinstance(agent_result, dict) else []
         }

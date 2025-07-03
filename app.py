@@ -25,11 +25,8 @@ def send_message():
     sender = data.get('sender')  # 'customer' or 'agent'
     message = data.get('message')
     
-    print(f"DEBUG FLASK: Received request - sender: '{sender}', message: '{message}'")
-    
     # Only process customer messages - agents should not trigger AI processing
     if sender != 'customer':
-        print(f"DEBUG FLASK: Ignoring {sender} message - only customer messages are processed")
         return jsonify({
             'success': True,
             'suggestions': [],
@@ -39,11 +36,9 @@ def send_message():
 
     # Get conversation context (last few messages)
     conversation_context = data.get('conversation_context', [])
-    print(f"DEBUG FLASK: Conversation context: {conversation_context}")
     
     # Generate AI suggestions based on the conversation
     result = rag_system.get_suggestions(message, conversation_context, sender)
-    print(f"DEBUG FLASK: Generated result: {result}")
     
     # Extract suggestions and knowledge snippets from the result
     if isinstance(result, dict):
@@ -54,17 +49,11 @@ def send_message():
         suggestions = result if isinstance(result, list) else [str(result)]
         knowledge_snippets = []
     
-    print(f"DEBUG FLASK: Suggestions: {suggestions}")
-    print(f"DEBUG FLASK: Knowledge snippets: {knowledge_snippets}")
-    print(f"DEBUG FLASK: Number of suggestions: {len(suggestions)}")
-    print(f"DEBUG FLASK: Number of knowledge snippets: {len(knowledge_snippets)}")
-    
     response_data = {
         'success': True,
         'suggestions': suggestions,
         'knowledge_snippets': knowledge_snippets
     }
-    print(f"DEBUG FLASK: Response data: {response_data}")
     
     return jsonify(response_data)
 
@@ -109,7 +98,6 @@ def test_question():
     data = request.json
     question = data.get('question', 'What is this knowledge base about?')
     
-    print(f"DEBUG: Testing question: '{question}'")
     response = rag_system.answer_question(question)
     
     return jsonify({
@@ -118,20 +106,7 @@ def test_question():
         'response': response
     })
 
-@app.route('/debug_test')
-def debug_test():
-    """Test the RAG system with debug output."""
-    try:
-        results = rag_system.debug_test_system()
-        return jsonify({
-            'success': True,
-            'results': results
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+
 
 @app.route('/system_status')
 def system_status():
@@ -176,4 +151,4 @@ if __name__ == '__main__':
     status = rag_system.get_system_status()
     print(f"System Status: {status}")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
