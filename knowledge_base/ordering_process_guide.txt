@@ -1,0 +1,217 @@
+ORDERING PROCESS GUIDE
+
+ACCOUNT SETUP
+=============
+
+Creating an Account
+- Visit www.exoticmeats.com/register
+- Required information: Name, email, phone, billing address
+- Age verification required (must be 18+)
+- Email confirmation within 5 minutes
+- Account activation immediate after verification
+
+Account Types
+- Individual/Retail: Standard consumer pricing
+- Restaurant/Commercial: Volume discounts, special terms
+- Wholesale: Requires business license, minimum orders
+- Gift Account: For gift orders only, no stored payment methods
+
+LOGIN ASSISTANCE
+- Password reset: Automated email link
+- Account lockout: After 5 failed attempts, 24-hour lockout
+- Two-factor authentication available for enhanced security
+
+PRODUCT SELECTION
+=================
+
+Browsing Products
+- Categories: Game Meats, Poultry, Specialty Meats, Processed Items
+- Filter options: Price range, cut type, quantity, availability
+- Search function: Name, species, or description keywords
+- Product comparison tool available
+- Nutritional information provided for all products
+
+Product Information
+- Detailed descriptions and cooking recommendations
+- High-resolution product images
+- Customer reviews and ratings
+- Nutritional facts and allergen information
+- Source farm information and certifications
+
+Quantity Selection
+- Individual portions available
+- Bulk pricing for quantities over 5 lbs
+- Family packs (serves 4-6 people)
+- Commercial quantities (25+ lbs)
+- Custom quantities available upon request
+
+SHOPPING CART
+=============
+
+Adding Items
+- Select quantity and any processing options
+- Add to cart or save to wish list
+- Cart saves items for 30 days
+- Quick reorder from previous purchases
+- Bulk add feature for large orders
+
+Cart Management
+- Edit quantities before checkout
+- Remove items or save for later
+- Apply promo codes and discounts
+- View shipping estimates
+- Express checkout for saved payment methods
+
+Price Calculations
+- Real-time pricing updates
+- Volume discounts automatically applied
+- Shipping calculator based on zip code
+- Tax calculations for applicable states
+- Final total shown before payment
+
+CHECKOUT PROCESS
+================
+
+Shipping Information
+- Use account default or enter new address
+- Residential vs. commercial delivery options
+- Special delivery instructions field
+- Signature requirements notification
+- Delivery date preferences (where available)
+
+Payment Methods
+- Credit cards: Visa, MasterCard, American Express, Discover
+- PayPal and Apple Pay accepted
+- Business accounts: Net 30 terms available
+- Gift cards and store credit
+- Split payment options for large orders
+
+Order Verification
+- Review all items, quantities, and prices
+- Confirm shipping method and address
+- Verify contact information for delivery
+- Accept terms of service and food safety acknowledgment
+- Final order total including all fees
+
+ORDER CONFIRMATION
+==================
+
+Immediate Confirmation
+- Order number generated and displayed
+- Email confirmation sent within 5 minutes
+- PDF receipt attached to confirmation email
+- Estimated processing and ship dates provided
+- Customer service contact information included
+
+Order Status Updates
+- Processing notification when order begins fulfillment
+- Shipping notification with tracking information
+- Delivery confirmation when package is delivered
+- SMS updates available upon request
+
+SPECIAL ORDER OPTIONS
+=====================
+
+Custom Processing
+- Special cuts and portion sizes available
+- Custom packaging for gifts or commercial use
+- Extended aging for certain cuts
+- Specialty marinades and seasonings
+- Lead time: 5-10 business days
+
+Subscription Orders
+- Monthly delivery of favorite products
+- Customizable product mix
+- 10% discount on all subscription items
+- Skip months or modify orders anytime
+- Free shipping on all subscription orders
+
+Corporate Catering
+- Large quantity orders for events
+- Professional consultation on menu planning
+- Special packaging and presentation options
+- Delivery coordination for multiple locations
+- Invoice payment terms available
+
+CUSTOMER SUPPORT
+=================
+
+Order Changes
+- Modifications accepted until order ships
+- Cannot change shipping method once processed
+- Contact customer service for assistance
+- Some changes may incur additional fees
+
+Order Cancellation
+- Full cancellation available until order ships
+- Partial cancellations possible for unshipped items
+- Automated cancellation for payment issues
+- Refunds processed within 3-5 business days
+
+Live Support
+- Live chat: Available 8 AM - 8 PM EST
+- Phone support: 1-800-EXOTIC-1 (396-8421)
+- Email support: orders@exoticmeats.com
+- Average response time: Under 2 hours during business hours
+
+PAYMENT PROCESSING
+==================
+
+Security Features
+- SSL encryption for all transactions
+- PCI DSS compliant payment processing
+- Fraud detection and prevention systems
+- CVV verification required
+- Address verification for credit cards
+
+Payment Issues
+- Declined cards: Customer notified immediately
+- Retry payment option available for 48 hours
+- Alternative payment methods suggested
+- Customer service assistance for payment problems
+
+Billing
+- Charges processed when order ships
+- Separate charges for multiple shipments
+- Detailed billing statements available online
+- Commercial accounts receive monthly statements
+
+MOBILE ORDERING
+===============
+
+Mobile App Features
+- Full product catalog available
+- One-touch reordering
+- Push notifications for order updates
+- Barcode scanning for quick product lookup
+- GPS-based shipping estimates
+
+Mobile-Optimized Website
+- Responsive design for all devices
+- Touch-friendly interface
+- Mobile payment options (Apple Pay, Google Pay)
+- Quick checkout for returning customers
+- Social sharing features
+
+TROUBLESHOOTING
+===============
+
+Common Issues
+- Website performance: Clear browser cache, try different browser
+- Payment problems: Verify card information, check with bank
+- Shipping estimates: Enter complete zip code
+- Product availability: Check stock status, set restock alerts
+
+Technical Support
+- Website issues: support@exoticmeats.com
+- Mobile app problems: Update to latest version
+- Browser compatibility: Chrome, Firefox, Safari, Edge supported
+- System maintenance: Scheduled Sundays 2-4 AM EST
+
+CONTACT INFORMATION
+==================
+General Orders: 1-800-EXOTIC-1 (396-8421)
+Large Orders (Commercial): ext. 201
+Technical Support: ext. 411
+Customer Service Email: support@exoticmeats.com
+Live Chat: Available on website 8 AM - 8 PM EST 
