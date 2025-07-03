@@ -311,7 +311,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
 
 
     def get_suggestions(self, message: str, conversation_context: List[Dict], sender: str) -> Dict[str, List[str]]:
-        """Generate AI suggestions and retrieve relevant knowledge base snippets for customer messages."""
+        """Generate AI suggestions, conversation summary, and retrieve relevant knowledge base snippets for customer messages."""
         logger.debug("get_suggestions called")
         logger.debug(f"message: '{message}'")
         logger.debug(f"sender: '{sender}'")
@@ -321,19 +321,36 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             logger.debug("Index not available")
             return {
                 "suggestions": ["Knowledge base is not loaded. Please add documents to the knowledge_base folder."],
-                "knowledge_snippets": []
+                "knowledge_snippets": [],
+                "summary": "Knowledge base not available"
             }
         
         try:
             # Only process customer messages - agent messages are handled at Flask level
             if sender == 'customer':
-                logger.debug("Customer message - Using RAG to generate agent response suggestions")
-                result = self._generate_customer_suggestions(message, conversation_context)
+                logger.debug("Customer message - Using RAG to generate agent response suggestions and summary")
+                
+                # Generate suggestions and summary (sequential for now)
+                logger.debug("Generating suggestions...")
+                suggestions_result = self._generate_customer_suggestions(message, conversation_context)
+                logger.debug(f"Suggestions result: {suggestions_result}")
+                
+                logger.debug("Generating conversation summary...")
+                summary_result = self._generate_conversation_summary(message, conversation_context)
+                logger.debug(f"Summary result: {summary_result}")
+                
+                # Combine results
+                result = suggestions_result.copy()
+                result["summary"] = summary_result
+                logger.debug(f"Combined result: {result}")
+                logger.debug(f"Summary in final result: {result.get('summary', 'NOT_FOUND')}")
+                
             else:
                 logger.debug(f"Non-customer message blocked (sender: {sender})")
                 result = {
                     "suggestions": ["Only customer messages are processed by the AI system"],
-                    "knowledge_snippets": []
+                    "knowledge_snippets": [],
+                    "summary": "No summary for agent messages"
                 }
             
             logger.debug(f"Final result: {result}")
@@ -343,7 +360,8 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             logger.debug(f"Exception in get_suggestions: {e}")
             return {
                 "suggestions": [f"Error generating suggestions: {e}"],
-                "knowledge_snippets": []
+                "knowledge_snippets": [],
+                "summary": f"Error generating summary: {e}"
             }
 
     def _generate_customer_suggestions(self, message: str, conversation_context: List[Dict]) -> Dict[str, List[str]]:
@@ -433,6 +451,53 @@ just say "I'm sorry, I don't have any information on that topic."
                 "suggestions": [f"Error generating customer suggestions: {e}"],
                 "knowledge_snippets": []
             }
+
+    def _generate_conversation_summary(self, message: str, conversation_context: List[Dict]) -> str:
+        """Generate a concise summary of the conversation using the LLM."""
+        logger.debug("_generate_conversation_summary called")
+        logger.debug(f"Message: {message}")
+        logger.debug(f"Conversation context: {conversation_context}")
+        
+        # Build conversation context
+        context_str = self._build_conversation_context(conversation_context)
+        logger.debug(f"Built context string: {context_str}")
+        
+        if context_str == "No previous conversation context.":
+            summary = f"Customer contacted support with: {message[:100]}{'...' if len(message) > 100 else ''}"
+            logger.debug(f"No context, returning simple summary: {summary}")
+            return summary
+        
+        try:
+            # Create summary prompt
+            summary_prompt = f"""You are a customer service supervisor reviewing a conversation between a customer and agent.
+
+CONVERSATION:
+{context_str}
+
+TASK: Provide a brief, professional summary of this conversation in 1-2 sentences. Focus on:
+- The customer's main issue/request
+- Key points discussed
+- Current status/resolution progress
+
+Keep it concise and factual. This summary will help the agent quickly understand the conversation context.
+
+SUMMARY:"""
+            
+            logger.debug("About to call LLM for summary generation")
+            # Generate summary using the LLM
+            response = Settings.llm.complete(summary_prompt)
+            summary = str(response).strip()
+            
+            logger.debug(f"Generated summary: {summary}")
+            return summary
+            
+        except Exception as e:
+            logger.debug(f"Error generating summary: {e}")
+            import traceback
+            traceback.print_exc()
+            fallback_summary = f"Conversation with {len(conversation_context)} messages. Latest: {message[:50]}{'...' if len(message) > 50 else ''}"
+            logger.debug(f"Returning fallback summary: {fallback_summary}")
+            return fallback_summary
 
     def _build_conversation_context(self, conversation_context: List[Dict]) -> str:
         """Build a string representation of the conversation context using the last N messages."""

@@ -21,7 +21,7 @@ body {
 
 /* Chat Panel Styles */
 .chat-panel {
-    flex: 1;
+    flex: 1.2;
     background: white;
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -202,7 +202,19 @@ body {
     overflow: hidden;
 }
 
-.ai-header {
+/* Knowledge Panel Styles */
+.knowledge-panel {
+    flex: 1;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Panel Header Styles */
+.panel-header {
     background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
     color: white;
     padding: 20px;
@@ -211,9 +223,21 @@ body {
     align-items: center;
 }
 
-.ai-header h2 {
+.panel-header h2 {
     margin: 0;
     font-size: 1.4em;
+}
+
+/* Knowledge Panel Header - Green */
+.knowledge-panel .panel-header {
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+}
+
+/* Panel Content */
+.panel-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
 }
 
 .loading-indicator {
@@ -231,12 +255,6 @@ body {
     80% {
         transform: translateY(-2px);
     }
-}
-
-.ai-content {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
 }
 
 .suggestion-section {
@@ -323,8 +341,6 @@ body {
     transform: translateY(-1px);
 }
 
-
-
 .snippet-source {
     font-size: 0.8em;
     color: #666;
@@ -369,41 +385,47 @@ body {
 
 /* Scrollbar Styling */
 .chat-messages::-webkit-scrollbar,
-.ai-content::-webkit-scrollbar,
+.panel-content::-webkit-scrollbar,
 .knowledge-snippet::-webkit-scrollbar {
     width: 6px;
 }
 
 .chat-messages::-webkit-scrollbar-track,
-.ai-content::-webkit-scrollbar-track,
+.panel-content::-webkit-scrollbar-track,
 .knowledge-snippet::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 3px;
 }
 
 .chat-messages::-webkit-scrollbar-thumb,
-.ai-content::-webkit-scrollbar-thumb,
+.panel-content::-webkit-scrollbar-thumb,
 .knowledge-snippet::-webkit-scrollbar-thumb {
     background: #c1c1c1;
     border-radius: 3px;
 }
 
 .chat-messages::-webkit-scrollbar-thumb:hover,
-.ai-content::-webkit-scrollbar-thumb:hover,
+.panel-content::-webkit-scrollbar-thumb:hover,
 .knowledge-snippet::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }
 
 /* Responsive Design */
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
     .container {
         flex-direction: column;
         gap: 5px;
         padding: 5px;
     }
     
-    .chat-panel, .ai-panel {
-        height: 50vh;
+    .chat-panel {
+        flex: 1;
+        min-height: 40vh;
+    }
+    
+    .ai-panel, .knowledge-panel {
+        flex: 1;
+        min-height: 30vh;
     }
 }
 
@@ -416,11 +438,11 @@ body {
         width: 100%;
     }
     
-    .chat-header, .ai-header {
+    .chat-header, .panel-header {
         padding: 15px;
     }
-    
-    .chat-header h2, .ai-header h2 {
+
+    .chat-header h2, .panel-header h2 {
         font-size: 1.2em;
     }
 } 

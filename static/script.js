@@ -128,7 +128,8 @@ async function getAIAnalysis(message, sender) {
         if (data.success) {
             console.log('DEBUG: Suggestions received:', data.suggestions);
             console.log('DEBUG: Knowledge snippets received:', data.knowledge_snippets);
-            updateAISuggestions(data.suggestions, data.knowledge_snippets);
+            console.log('DEBUG: Summary received:', data.summary);
+            updateAISuggestions(data.suggestions, data.knowledge_snippets, data.summary);
         } else {
             console.error('DEBUG: Response success=false');
             showError('Failed to get AI suggestions');
@@ -143,16 +144,23 @@ async function getAIAnalysis(message, sender) {
 }
 
 // Update AI suggestions panel - FIXED to work with backend response
-function updateAISuggestions(suggestions, knowledgeSnippets = []) {
+function updateAISuggestions(suggestions, knowledgeSnippets = [], summary = null) {
     console.log('DEBUG: updateAISuggestions called with:', suggestions);
     console.log('DEBUG: updateAISuggestions knowledge snippets:', knowledgeSnippets);
+    console.log('DEBUG: updateAISuggestions summary:', summary);
     
-    // Update summary with basic conversation info
+    // Update summary with AI-generated summary or fallback
     const summaryBox = document.getElementById('summaryBox');
-    const conversationLength = conversationHistory.length;
-    const latestMessage = conversationHistory[conversationLength - 1];
-    
-    summaryBox.innerHTML = `<p>📊 <strong>Conversation Summary:</strong> ${conversationLength} message(s) exchanged. Latest from ${latestMessage.sender}: "${latestMessage.message.substring(0, 50)}${latestMessage.message.length > 50 ? '...' : ''}"</p>`;
+    if (summary && summary !== 'No summary available') {
+        // Convert line breaks and display AI-generated summary
+        const formattedSummary = summary.replace(/\n/g, '<br>');
+        summaryBox.innerHTML = `<p class="summary-text">📋 ${formattedSummary}</p>`;
+    } else {
+        // Fallback to basic conversation info if no AI summary
+        const conversationLength = conversationHistory.length;
+        const latestMessage = conversationHistory[conversationLength - 1];
+        summaryBox.innerHTML = `<p>📊 <strong>Conversation Summary:</strong> ${conversationLength} message(s) exchanged. Latest from ${latestMessage.sender}: "${latestMessage.message.substring(0, 50)}${latestMessage.message.length > 50 ? '...' : ''}"</p>`;
+    }
     
     // Update suggested responses - FIXED to handle array of strings
     const suggestionsList = document.getElementById('suggestionsList');
@@ -244,6 +252,8 @@ function showError(message) {
     summaryBox.innerHTML = `<p class="error-message">⚠️ ${message}</p>`;
 }
 
+// Tab switching functionality removed - now using three-column layout
+
 // Clear conversation (optional feature)
 function clearConversation() {
     if (confirm('Are you sure you want to clear the conversation?')) {
@@ -251,7 +261,7 @@ function clearConversation() {
         document.getElementById('chatMessages').innerHTML = '';
         
         // Reset AI panels to placeholder text
-        document.getElementById('summaryBox').innerHTML = '<p class="placeholder-text">AI-generated summary will appear here based on the conversation and relevant SOPs.</p>';
+        document.getElementById('summaryBox').innerHTML = '<p class="placeholder-text">AI-generated conversation summary will appear here.</p>';
         document.getElementById('suggestionsList').innerHTML = '<p class="placeholder-text">Suggested responses will appear here when there\'s an active conversation.</p>';
         document.getElementById('knowledgeSnippets').innerHTML = '<p class="placeholder-text">Relevant snippets from SOPs will appear here.</p>';
         

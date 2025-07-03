@@ -41,20 +41,20 @@
             </div>
         </div>
         
-        <!-- Right Panel: AI Suggestions -->
+        <!-- Middle Panel: AI Assistant -->
         <div class="ai-panel">
-            <div class="ai-header">
-                <h2>AI Assistant</h2>
+            <div class="panel-header">
+                <h2>🤖 AI Assistant</h2>
                 <div class="ai-status" id="aiStatus">
                     <span class="loading-indicator" style="display: none;">🤖 Analyzing...</span>
                 </div>
             </div>
             
-            <div class="ai-content">
+            <div class="panel-content">
                 <div class="suggestion-section">
                     <h3>📋 Summary</h3>
                     <div class="summary-box" id="summaryBox">
-                        <p class="placeholder-text">AI-generated summary will appear here based on the conversation and relevant SOPs.</p>
+                        <p class="placeholder-text">AI-generated conversation summary will appear here.</p>
                     </div>
                 </div>
                 
@@ -64,12 +64,18 @@
                         <p class="placeholder-text">Suggested responses will appear here when there's an active conversation.</p>
                     </div>
                 </div>
-                
-                <div class="suggestion-section">
-                    <h3>📖 Relevant Knowledge Base</h3>
-                    <div class="knowledge-snippets" id="knowledgeSnippets">
-                        <p class="placeholder-text">Relevant snippets from SOPs will appear here.</p>
-                    </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel: Knowledge Base -->
+        <div class="knowledge-panel">
+            <div class="panel-header">
+                <h2>📖 Knowledge Base</h2>
+            </div>
+            
+            <div class="panel-content">
+                <div class="knowledge-snippets" id="knowledgeSnippets">
+                    <p class="placeholder-text">Relevant snippets from SOPs will appear here.</p>
                 </div>
             </div>
         </div>

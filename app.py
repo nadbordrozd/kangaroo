@@ -30,6 +30,7 @@ def send_message():
             'success': True,
             'suggestions': [],
             'knowledge_snippets': [],
+            'summary': 'Agent messages are not processed by AI system',
             'message': 'Agent messages are not processed by AI system'
         })
 
@@ -39,19 +40,22 @@ def send_message():
     # Generate AI suggestions based on the conversation
     result = rag_system.get_suggestions(message, conversation_context, sender)
     
-    # Extract suggestions and knowledge snippets from the result
+    # Extract suggestions, knowledge snippets, and summary from the result
     if isinstance(result, dict):
         suggestions = result.get('suggestions', [])
         knowledge_snippets = result.get('knowledge_snippets', [])
+        summary = result.get('summary', 'No summary available')
     else:
         # Fallback for backward compatibility
         suggestions = result if isinstance(result, list) else [str(result)]
         knowledge_snippets = []
+        summary = 'No summary available'
     
     response_data = {
         'success': True,
         'suggestions': suggestions,
-        'knowledge_snippets': knowledge_snippets
+        'knowledge_snippets': knowledge_snippets,
+        'summary': summary
     }
     
     return jsonify(response_data)
