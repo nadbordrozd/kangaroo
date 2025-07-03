@@ -11,7 +11,8 @@ app = Flask(__name__)
 # similarity_top_k=5 means retrieve top 5 most relevant chunks for each query
 # persist_dir stores the cached embeddings to avoid re-computing on restart
 # use_reranker=True enables LLM-based relevance filtering of retrieved chunks (more API calls but better quality)
-rag_system = RAGSystem(similarity_top_k=5, persist_dir='./storage', use_reranker=True)
+# conversation_context_length=5 means use last 5 messages for conversation context
+rag_system = RAGSystem(similarity_top_k=5, persist_dir='./storage', use_reranker=True, conversation_context_length=5)
 
 @app.route('/')
 def index():

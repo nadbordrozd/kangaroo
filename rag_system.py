@@ -31,11 +31,12 @@ if not logger.handlers:
     logger.addHandler(console_handler)
 
 class RAGSystem:
-    def __init__(self, knowledge_base_path: str = 'knowledge_base', similarity_top_k: int = 5, persist_dir: str = './storage', use_reranker: bool = False):
+    def __init__(self, knowledge_base_path: str = 'knowledge_base', similarity_top_k: int = 5, persist_dir: str = './storage', use_reranker: bool = False, conversation_context_length: int = 5):
         self.knowledge_base_path = knowledge_base_path
         self.similarity_top_k = similarity_top_k
         self.persist_dir = persist_dir
         self.use_reranker = use_reranker
+        self.conversation_context_length = conversation_context_length
         self.index: Optional[VectorStoreIndex] = None
         self.reranker_llm = None
         self._setup_system()
@@ -91,7 +92,7 @@ class RAGSystem:
     def _should_rebuild_index(self) -> bool:
         """Check if the index should be rebuilt based on file changes."""
         # Check if storage directory exists
-        logger.warning(f"Checking if index should be rebuilt: {self.persist_dir}")
+        logger.debug(f"Checking if index should be rebuilt: {self.persist_dir}")
         if not os.path.exists(self.persist_dir):
             logger.debug("Storage directory doesn't exist, will create new index")
             return True
@@ -158,7 +159,8 @@ class RAGSystem:
             'modification_time': self._get_files_modification_time(files),
             'created_at': time.time(),
             'similarity_top_k': self.similarity_top_k,
-            'use_reranker': self.use_reranker
+            'use_reranker': self.use_reranker,
+            'conversation_context_length': self.conversation_context_length
         }
         
         metadata_file = os.path.join(self.persist_dir, 'metadata.json')
@@ -349,24 +351,14 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         logger.debug("_generate_customer_suggestions called - using retriever approach")
         
         # Build context from conversation history
-        context = self._build_conversation_context(conversation_context)
-        logger.debug(f"Built context: '{context}'")
-        
-        # Create a prompt for customer assistance
-        prompt = f"""
-        Based on the customer's message: "{message}"
-        And conversation context: {context}
-        
-        Generate one helpful suggestion for how an agent might respond to assist this customer.
-        Focus on being helpful, professional, and solution-oriented.
-        """
-        logger.debug(f"Customer prompt: '{prompt}'")
+        conversation_context = self._build_conversation_context(conversation_context)
+        logger.debug(f"Built context: '{conversation_context}'")
         
         try:
             # Step 1: Retrieve raw chunks from vector store
             logger.debug("Retrieving chunks from vector store...")
             retriever = self.index.as_retriever(similarity_top_k=self.similarity_top_k)
-            retrieved_nodes = retriever.retrieve(prompt)
+            retrieved_nodes = retriever.retrieve(conversation_context)
             logger.debug(f"Retrieved {len(retrieved_nodes)} initial chunks")
             
             # Step 2: Apply optional reranking
@@ -376,7 +368,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 asyncio.set_event_loop(loop)
                 try:
                     filtered_nodes = loop.run_until_complete(
-                        self._rerank_chunks(retrieved_nodes, context, message)
+                        self._rerank_chunks(retrieved_nodes, conversation_context, message)
                     )
                 finally:
                     loop.close()
@@ -401,16 +393,23 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             
             combined_context = "\n\n".join(context_parts)
             
+
             # Step 4: Generate response using context
-            enhanced_prompt = f"""
-            {prompt}
+            enhanced_prompt = f"""You are a customer service agent chatting to a customer. 
+Write a helpful response to the customer's last message:
+
+{conversation_context}
+
+based on the following sources of information:
             
-            Use the following relevant information from the knowledge base to inform your suggestions:
-            
-            {combined_context}
+{combined_context}
+
+------------------------------------
+If there is no information in the sources of information that is relevant to the customer's message, 
+just say "I'm sorry, I don't have any information on that topic."
+
+------------------------------------
             """
-            
-            logger.debug("Generating suggestions with retrieved context...")
             response = Settings.llm.complete(enhanced_prompt)
             response_str = str(response)
             
@@ -418,19 +417,8 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             final_suggestions = [response_str.strip()]
             
             # Step 6: Create knowledge snippets from final nodes
-            knowledge_snippets = []
-            for node in final_nodes:
-                chunk_text = node.text if hasattr(node, 'text') else str(node)
-                file_name = "Unknown"
-                if hasattr(node, 'metadata') and 'file_name' in node.metadata:
-                    file_name = node.metadata['file_name']
-                elif hasattr(node, 'node') and hasattr(node.node, 'metadata') and 'file_name' in node.node.metadata:
-                    file_name = node.node.metadata['file_name']
-                
-                snippet = f"📄 **{file_name}**\n{chunk_text}"
-                knowledge_snippets.append(snippet)
             
-            logger.debug(f"Generated 1 suggestion with {len(knowledge_snippets)} knowledge snippets")
+            knowledge_snippets = [f"📄 **{node.metadata['file_name']}**\n{node.text}" for node in final_nodes]
             
             return {
                 "suggestions": final_suggestions,
@@ -447,15 +435,15 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             }
 
     def _build_conversation_context(self, conversation_context: List[Dict]) -> str:
-        """Build a string representation of the conversation context."""
-        logger.debug(f"_build_conversation_context called with {len(conversation_context)} messages")
+        """Build a string representation of the conversation context using the last N messages."""
+        logger.debug(f"_build_conversation_context called with {len(conversation_context)} messages, using last {self.conversation_context_length} for context")
         
         if not conversation_context:
             logger.debug("No conversation context provided")
             return "No previous conversation context."
         
         context_parts = []
-        for i, msg in enumerate(conversation_context[-5:]):  # Last 5 messages for context
+        for i, msg in enumerate(conversation_context[-self.conversation_context_length:]):
             sender = msg.get('sender', 'Unknown')
             message = msg.get('message', '')
             context_part = f"{sender}: {message}"
@@ -504,5 +492,6 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             'cache_available': metadata_exists,
             'storage_info': storage_info,
             'use_reranker': self.use_reranker,
-            'reranker_model': 'gpt-4o-mini' if self.use_reranker else None
+            'reranker_model': 'gpt-4o-mini' if self.use_reranker else None,
+            'conversation_context_length': self.conversation_context_length
         }
