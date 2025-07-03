@@ -1,7 +1,9 @@
 import os
+import json
+import time
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
-from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Settings
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Settings, StorageContext, load_index_from_storage
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.node_parser import SentenceSplitter
@@ -12,10 +14,11 @@ from llama_index.core.chat_engine import CondenseQuestionChatEngine
 load_dotenv()
 
 class RAGSystem:
-    def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False, similarity_top_k: int = 5):
+    def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False, similarity_top_k: int = 5, persist_dir: str = './storage'):
         self.knowledge_base_path = knowledge_base_path
         self.use_faiss = use_faiss
         self.similarity_top_k = similarity_top_k
+        self.persist_dir = persist_dir
         self.index: Optional[VectorStoreIndex] = None
         self.query_engine = None
         self.chat_engine = None
@@ -43,6 +46,97 @@ class RAGSystem:
         
         self._load_knowledge_base()
 
+    def _get_knowledge_base_files(self) -> List[str]:
+        """Get list of .txt files in knowledge base directory."""
+        if not os.path.exists(self.knowledge_base_path):
+            return []
+        return [f for f in os.listdir(self.knowledge_base_path) if f.endswith('.txt')]
+
+    def _get_files_modification_time(self, files: List[str]) -> float:
+        """Get the latest modification time of knowledge base files."""
+        if not files:
+            return 0
+        
+        latest_time = 0
+        for file in files:
+            file_path = os.path.join(self.knowledge_base_path, file)
+            if os.path.exists(file_path):
+                file_time = os.path.getmtime(file_path)
+                latest_time = max(latest_time, file_time)
+        return latest_time
+
+    def _should_rebuild_index(self) -> bool:
+        """Check if the index should be rebuilt based on file changes."""
+        # Check if storage directory exists
+        if not os.path.exists(self.persist_dir):
+            print("DEBUG: Storage directory doesn't exist, will create new index")
+            return True
+        
+        # Check if index files exist
+        index_files = ['docstore.json', 'index_store.json', 'vector_store.json']
+        for index_file in index_files:
+            if not os.path.exists(os.path.join(self.persist_dir, index_file)):
+                print(f"DEBUG: Index file {index_file} missing, will rebuild index")
+                return True
+        
+        # Check if metadata file exists
+        metadata_file = os.path.join(self.persist_dir, 'metadata.json')
+        if not os.path.exists(metadata_file):
+            print("DEBUG: Metadata file missing, will rebuild index")
+            return True
+        
+        # Load metadata and compare file modification times
+        try:
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+            
+            stored_files = set(metadata.get('files', []))
+            stored_mod_time = metadata.get('modification_time', 0)
+            
+            current_files = set(self._get_knowledge_base_files())
+            current_mod_time = self._get_files_modification_time(list(current_files))
+            
+            # Rebuild if files changed or modification time is newer
+            if stored_files != current_files:
+                print("DEBUG: Knowledge base files changed, will rebuild index")
+                return True
+            
+            if current_mod_time > stored_mod_time:
+                print("DEBUG: Knowledge base files modified, will rebuild index")
+                return True
+            
+            print("DEBUG: Index is up to date, will load from storage")
+            return False
+            
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"DEBUG: Error reading metadata: {e}, will rebuild index")
+            return True
+
+    def _save_metadata(self, files: List[str]):
+        """Save metadata about the current index."""
+        os.makedirs(self.persist_dir, exist_ok=True)
+        metadata = {
+            'files': files,
+            'modification_time': self._get_files_modification_time(files),
+            'created_at': time.time(),
+            'similarity_top_k': self.similarity_top_k,
+            'use_faiss': self.use_faiss
+        }
+        
+        metadata_file = os.path.join(self.persist_dir, 'metadata.json')
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        print(f"DEBUG: Saved metadata to {metadata_file}")
+
+    def clear_cache(self):
+        """Clear the cached embeddings and force rebuild on next load."""
+        import shutil
+        if os.path.exists(self.persist_dir):
+            shutil.rmtree(self.persist_dir)
+            print(f"DEBUG: Cleared cache directory: {self.persist_dir}")
+        else:
+            print(f"DEBUG: Cache directory doesn't exist: {self.persist_dir}")
+
     def _setup_vector_store(self):
         """Setup vector store based on configuration."""
         if self.use_faiss:
@@ -65,7 +159,7 @@ class RAGSystem:
             return None
 
     def _load_knowledge_base(self):
-        """Load and index the knowledge base documents."""
+        """Load and index the knowledge base documents with disk caching."""
         # Create directory if it doesn't exist
         if not os.path.exists(self.knowledge_base_path):
             os.makedirs(self.knowledge_base_path)
@@ -73,34 +167,65 @@ class RAGSystem:
             return
         
         # Check for documents
-        txt_files = [f for f in os.listdir(self.knowledge_base_path) if f.endswith('.txt')]
+        txt_files = self._get_knowledge_base_files()
         if not txt_files:
             print("No .txt files found in knowledge_base directory.")
             return
         
         try:
-            # Load documents using SimpleDirectoryReader
-            documents = SimpleDirectoryReader(
-                input_dir=self.knowledge_base_path,
-                required_exts=['.txt']
-            ).load_data()
+            # Check if we can load from existing storage
+            if not self._should_rebuild_index():
+                print("DEBUG: Loading index from storage...")
+                try:
+                    # Load from storage
+                    storage_context = StorageContext.from_defaults(persist_dir=self.persist_dir)
+                    self.index = load_index_from_storage(storage_context)
+                    print(f"DEBUG: Successfully loaded index from {self.persist_dir}")
+                    
+                except Exception as e:
+                    print(f"DEBUG: Failed to load from storage: {e}, will rebuild")
+                    # Fall through to rebuild
+                    pass
             
-            if not documents:
-                print("No documents loaded from knowledge base.")
-                return
-            
-            # Setup vector store
-            vector_store = self._setup_vector_store()
-            
-            # Create index
-            if vector_store:
-                self.index = VectorStoreIndex.from_documents(
-                    documents,
-                    vector_store=vector_store
-                )
+            # If we don't have an index, create it
+            if self.index is None:
+                print("DEBUG: Creating new index...")
+                
+                # Load documents using SimpleDirectoryReader
+                documents = SimpleDirectoryReader(
+                    input_dir=self.knowledge_base_path,
+                    required_exts=['.txt']
+                ).load_data()
+                
+                if not documents:
+                    print("No documents loaded from knowledge base.")
+                    return
+                
+                # Setup vector store
+                vector_store = self._setup_vector_store()
+                
+                # Create index
+                if vector_store:
+                    self.index = VectorStoreIndex.from_documents(
+                        documents,
+                        vector_store=vector_store
+                    )
+                else:
+                    # Use default vector store
+                    self.index = VectorStoreIndex.from_documents(documents)
+                
+                # Persist the index to storage
+                print(f"DEBUG: Saving index to {self.persist_dir}...")
+                self.index.storage_context.persist(persist_dir=self.persist_dir)
+                
+                # Save metadata
+                self._save_metadata(txt_files)
+                
+                print(f"DEBUG: Index saved to storage successfully")
+                print(f"Knowledge base indexed successfully from {len(txt_files)} files.")
+                print(f"DEBUG: Total documents processed: {len(documents)}")
             else:
-                # Use default vector store
-                self.index = VectorStoreIndex.from_documents(documents)
+                print(f"DEBUG: Using cached index for {len(txt_files)} files")
             
             # Set up query engine
             self.query_engine = self.index.as_query_engine(
@@ -116,9 +241,6 @@ class RAGSystem:
                 memory=memory
             )
             print(f"DEBUG: Chat engine created with memory buffer")
-            
-            print(f"Knowledge base indexed successfully from {len(txt_files)} files.")
-            print(f"DEBUG: Total documents processed: {len(documents)}")
             
             # Test query engine
             print("DEBUG: Testing query engine with simple question...")
@@ -436,16 +558,42 @@ class RAGSystem:
         if self.chat_engine:
             self.chat_engine.reset()
 
-    def get_system_status(self) -> Dict[str, bool]:
+    def get_system_status(self) -> Dict:
         """Get the status of system components."""
+        txt_files = self._get_knowledge_base_files()
+        
+        # Check if storage exists
+        storage_exists = os.path.exists(self.persist_dir)
+        metadata_file = os.path.join(self.persist_dir, 'metadata.json')
+        metadata_exists = os.path.exists(metadata_file)
+        
+        # Get storage info
+        storage_info = {}
+        if metadata_exists:
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                storage_info = {
+                    'cached_files': metadata.get('files', []),
+                    'cache_created_at': metadata.get('created_at', 0),
+                    'cache_mod_time': metadata.get('modification_time', 0)
+                }
+            except Exception:
+                storage_info = {'error': 'Failed to read metadata'}
+        
         return {
             'knowledge_base_loaded': self.index is not None,
             'query_engine_ready': self.query_engine is not None,
             'chat_engine_ready': self.chat_engine is not None,
-            'documents_found': len([f for f in os.listdir(self.knowledge_base_path) 
-                                  if f.endswith('.txt')]) > 0 if os.path.exists(self.knowledge_base_path) else False,
+            'documents_found': len(txt_files) > 0,
+            'document_count': len(txt_files),
+            'document_files': txt_files,
             'vector_store_type': 'FAISS' if self.use_faiss else 'Default',
-            'similarity_top_k': self.similarity_top_k
+            'similarity_top_k': self.similarity_top_k,
+            'persist_dir': self.persist_dir,
+            'storage_exists': storage_exists,
+            'cache_available': metadata_exists,
+            'storage_info': storage_info
         }
 
     def debug_test_system(self):

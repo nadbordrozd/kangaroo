@@ -11,7 +11,8 @@ app = Flask(__name__)
 # Set use_faiss=True if you want to use FAISS (requires: pip install faiss-cpu)
 # Set use_faiss=False to use the default vector store (simpler, no extra dependencies)
 # similarity_top_k=5 means retrieve top 5 most relevant chunks for each query
-rag_system = RAGSystem(use_faiss=False, similarity_top_k=5)
+# persist_dir stores the cached embeddings to avoid re-computing on restart
+rag_system = RAGSystem(use_faiss=False, similarity_top_k=5, persist_dir='./storage')
 
 @app.route('/')
 def index():
@@ -137,6 +138,21 @@ def system_status():
     status = rag_system.get_system_status()
     return jsonify(status)
 
+@app.route('/clear_cache', methods=['POST'])
+def clear_cache():
+    """Clear the cached embeddings."""
+    try:
+        rag_system.clear_cache()
+        return jsonify({
+            'success': True,
+            'message': 'Cache cleared successfully. Restart the app to rebuild embeddings.'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/health')
 def health():
     return jsonify({'status': 'healthy'})
@@ -149,6 +165,7 @@ if __name__ == '__main__':
     print("3. The app will be available at http://localhost:5000")
     print("Note: Now using OpenAI GPT-4 for both embeddings and text generation!")
     print(f"Configuration: Retrieving top {rag_system.similarity_top_k} most relevant chunks per query")
+    print(f"Storage: Embeddings cached in '{rag_system.persist_dir}' directory")
     
     # Check system status on startup
     status = rag_system.get_system_status()
