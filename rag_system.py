@@ -37,7 +37,6 @@ class RAGSystem:
         self.persist_dir = persist_dir
         self.use_reranker = use_reranker
         self.index: Optional[VectorStoreIndex] = None
-        self.query_engine = None
         self.reranker_llm = None
         self._setup_system()
 
@@ -298,14 +297,8 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             else:
                 logger.debug(f"Using cached index for {len(txt_files)} files")
             
-            # Set up query engine
-            self.query_engine = self.index.as_query_engine(
-                similarity_top_k=self.similarity_top_k,
-                streaming=False
-            )
-            logger.debug(f"Query engine created with similarity_top_k={self.similarity_top_k}")
+            logger.debug(f"Index ready for retrieval with similarity_top_k={self.similarity_top_k}")
             
-
             
         except Exception as e:
             logger.error(f"Error loading knowledge base: {e}")
@@ -352,8 +345,8 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             }
 
     def _generate_customer_suggestions(self, message: str, conversation_context: List[Dict]) -> Dict[str, List[str]]:
-        """Generate suggestions for customer messages using RAG to retrieve relevant knowledge snippets."""
-        logger.debug("_generate_customer_suggestions called (WITH RAG)")
+        """Generate suggestions for customer messages using retriever + optional reranking + manual LLM."""
+        logger.debug("_generate_customer_suggestions called - using retriever approach")
         
         # Build context from conversation history
         context = self._build_conversation_context(conversation_context)
@@ -370,77 +363,45 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         logger.debug(f"Customer prompt: '{prompt}'")
         
         try:
-            if self.use_reranker:
-                # Use custom retrieval with reranking
-                logger.debug("Using custom retrieval with reranking...")
-                return self._generate_with_reranking(prompt, message, context)
-            else:
-                # Use standard query engine
-                logger.debug("Using standard query engine...")
-                response = self.query_engine.query(prompt)
-                logger.debug(f"Raw customer response: {response}")
-                logger.debug(f"Customer response type: {type(response)}")
-                
-                # Use response directly as single suggestion
-                response_str = str(response).strip()
-                logger.debug(f"Customer response as string: '{response_str}'")
-                
-                final_suggestions = [response_str]  # Single suggestion
-                
-                # Extract knowledge snippets from source nodes
-                knowledge_snippets = self._extract_knowledge_snippets(response)
-                
-                logger.debug(f"Final customer suggestion: {final_suggestions}")
-                logger.debug(f"Knowledge snippets: {knowledge_snippets}")
-                
-                return {
-                    "suggestions": final_suggestions,
-                    "knowledge_snippets": knowledge_snippets
-                }
-            
-        except Exception as e:
-            logger.debug(f"Exception in _generate_customer_suggestions: {e}")
-            return {
-                "suggestions": [f"Error generating customer suggestions: {e}"],
-                "knowledge_snippets": []
-            }
-
-    def _generate_with_reranking(self, prompt: str, customer_message: str, conversation_context: str) -> Dict[str, List[str]]:
-        """Generate suggestions using custom retrieval with reranking."""
-        try:
             # Step 1: Retrieve raw chunks from vector store
             logger.debug("Retrieving chunks from vector store...")
             retriever = self.index.as_retriever(similarity_top_k=self.similarity_top_k)
             retrieved_nodes = retriever.retrieve(prompt)
             logger.debug(f"Retrieved {len(retrieved_nodes)} initial chunks")
             
-            # Step 2: Apply reranking in an async context
-            logger.debug("Applying reranking...")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                filtered_nodes = loop.run_until_complete(
-                    self._rerank_chunks(retrieved_nodes, conversation_context, customer_message)
-                )
-            finally:
-                loop.close()
+            # Step 2: Apply optional reranking
+            if self.use_reranker:
+                logger.debug("Applying reranking...")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    filtered_nodes = loop.run_until_complete(
+                        self._rerank_chunks(retrieved_nodes, context, message)
+                    )
+                finally:
+                    loop.close()
+                
+                if not filtered_nodes:
+                    logger.debug("No relevant chunks found after reranking")
+                    return {
+                        "suggestions": ["No relevant information found in knowledge base for this query."],
+                        "knowledge_snippets": []
+                    }
+                final_nodes = filtered_nodes
+                logger.debug(f"After reranking: {len(final_nodes)} chunks")
+            else:
+                logger.debug("Skipping reranking - using all retrieved chunks")
+                final_nodes = retrieved_nodes
             
-            if not filtered_nodes:
-                logger.debug("No relevant chunks found after reranking")
-                return {
-                    "suggestions": ["No relevant information found in knowledge base for this query."],
-                    "knowledge_snippets": []
-                }
-            
-            # Step 3: Create context from filtered chunks
+            # Step 3: Create context from final chunks
             context_parts = []
-            for node in filtered_nodes:
+            for node in final_nodes:
                 chunk_text = node.text if hasattr(node, 'text') else str(node)
                 context_parts.append(chunk_text)
             
             combined_context = "\n\n".join(context_parts)
             
-            # Step 4: Generate response using filtered context
+            # Step 4: Generate response using context
             enhanced_prompt = f"""
             {prompt}
             
@@ -449,16 +410,16 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             {combined_context}
             """
             
-            logger.debug("Generating suggestions with reranked context...")
+            logger.debug("Generating suggestions with retrieved context...")
             response = Settings.llm.complete(enhanced_prompt)
             response_str = str(response)
             
             # Step 5: Use response directly as single suggestion
             final_suggestions = [response_str.strip()]
             
-            # Create knowledge snippets from filtered nodes
+            # Step 6: Create knowledge snippets from final nodes
             knowledge_snippets = []
-            for node in filtered_nodes:
+            for node in final_nodes:
                 chunk_text = node.text if hasattr(node, 'text') else str(node)
                 file_name = "Unknown"
                 if hasattr(node, 'metadata') and 'file_name' in node.metadata:
@@ -469,7 +430,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 snippet = f"📄 **{file_name}**\n{chunk_text}"
                 knowledge_snippets.append(snippet)
             
-            logger.debug(f"Generated 1 suggestion with {len(knowledge_snippets)} reranked snippets")
+            logger.debug(f"Generated 1 suggestion with {len(knowledge_snippets)} knowledge snippets")
             
             return {
                 "suggestions": final_suggestions,
@@ -477,53 +438,13 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             }
             
         except Exception as e:
-            logger.debug(f"Exception in _generate_with_reranking: {e}")
+            logger.debug(f"Exception in _generate_customer_suggestions: {e}")
             import traceback
             traceback.print_exc()
             return {
-                "suggestions": [f"Error in reranked generation: {e}"],
+                "suggestions": [f"Error generating customer suggestions: {e}"],
                 "knowledge_snippets": []
             }
-
-    def _extract_knowledge_snippets(self, response) -> List[str]:
-        """Extract knowledge base snippets from LlamaIndex response source nodes."""
-        logger.debug("_extract_knowledge_snippets called")
-        
-        snippets = []
-        
-        try:
-            # Access source nodes from the response
-            if hasattr(response, 'source_nodes') and response.source_nodes:
-                logger.debug(f"Found {len(response.source_nodes)} source nodes")
-                
-                for i, node in enumerate(response.source_nodes[:self.similarity_top_k]):  # Max similarity_top_k snippets
-                    logger.debug(f"Processing source node {i}")
-                    
-                    # Get the text content
-                    text = node.text if hasattr(node, 'text') else str(node)
-                    
-                    # Get the source file name
-                    file_name = "Unknown"
-                    if hasattr(node, 'metadata') and 'file_name' in node.metadata:
-                        file_name = node.metadata['file_name']
-                    elif hasattr(node, 'node') and hasattr(node.node, 'metadata') and 'file_name' in node.node.metadata:
-                        file_name = node.node.metadata['file_name']
-                    
-                    # Create a formatted snippet with full text (no truncation)
-                    snippet = f"📄 **{file_name}**\n{text}"
-                    snippets.append(snippet)
-                    logger.debug(f"Added snippet from {file_name}: {len(text)} characters")
-                    
-            else:
-                logger.debug("No source nodes found in response")
-                
-        except Exception as e:
-            logger.debug(f"Error extracting knowledge snippets: {e}")
-            # Fallback: create a generic snippet
-            snippets = ["📄 **Knowledge Base**: Information retrieved from knowledge base documents"]
-        
-        logger.debug(f"Final snippets: {len(snippets)} items")
-        return snippets
 
     def _build_conversation_context(self, conversation_context: List[Dict]) -> str:
         """Build a string representation of the conversation context."""
@@ -572,7 +493,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         
         return {
             'knowledge_base_loaded': self.index is not None,
-            'query_engine_ready': self.query_engine is not None,
+            'retriever_ready': self.index is not None,
             'documents_found': len(txt_files) > 0,
             'document_count': len(txt_files),
             'document_files': txt_files,
