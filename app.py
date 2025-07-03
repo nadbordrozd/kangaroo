@@ -24,18 +24,42 @@ def send_message():
     
     print(f"DEBUG FLASK: Received request - sender: '{sender}', message: '{message}'")
     
+    # Only process customer messages - agents should not trigger AI processing
+    if sender != 'customer':
+        print(f"DEBUG FLASK: Ignoring {sender} message - only customer messages are processed")
+        return jsonify({
+            'success': True,
+            'suggestions': [],
+            'knowledge_snippets': [],
+            'message': 'Agent messages are not processed by AI system'
+        })
+
     # Get conversation context (last few messages)
     conversation_context = data.get('conversation_context', [])
     print(f"DEBUG FLASK: Conversation context: {conversation_context}")
     
     # Generate AI suggestions based on the conversation
-    suggestions = rag_system.get_suggestions(message, conversation_context, sender)
-    print(f"DEBUG FLASK: Generated suggestions: {suggestions}")
+    result = rag_system.get_suggestions(message, conversation_context, sender)
+    print(f"DEBUG FLASK: Generated result: {result}")
+    
+    # Extract suggestions and knowledge snippets from the result
+    if isinstance(result, dict):
+        suggestions = result.get('suggestions', [])
+        knowledge_snippets = result.get('knowledge_snippets', [])
+    else:
+        # Fallback for backward compatibility
+        suggestions = result if isinstance(result, list) else [str(result)]
+        knowledge_snippets = []
+    
+    print(f"DEBUG FLASK: Suggestions: {suggestions}")
+    print(f"DEBUG FLASK: Knowledge snippets: {knowledge_snippets}")
     print(f"DEBUG FLASK: Number of suggestions: {len(suggestions)}")
+    print(f"DEBUG FLASK: Number of knowledge snippets: {len(knowledge_snippets)}")
     
     response_data = {
         'success': True,
-        'suggestions': suggestions
+        'suggestions': suggestions,
+        'knowledge_snippets': knowledge_snippets
     }
     print(f"DEBUG FLASK: Response data: {response_data}")
     

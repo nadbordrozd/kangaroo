@@ -43,11 +43,15 @@ function sendMessage(sender) {
     // Clear input
     input.value = '';
     
-    // Show loading indicator
-    showLoadingIndicator();
-    
-    // Send to backend for AI analysis
-    getAIAnalysis(message, sender);
+    // Only process customer messages with AI analysis
+    if (sender === 'customer') {
+        // Show loading indicator
+        showLoadingIndicator();
+        
+        // Send to backend for AI analysis
+        getAIAnalysis(message, sender);
+    }
+    // For agent messages: do absolutely nothing - leave AI panel unchanged
 }
 
 // Add message to chat display
@@ -118,7 +122,8 @@ async function getAIAnalysis(message, sender) {
         
         if (data.success) {
             console.log('DEBUG: Suggestions received:', data.suggestions);
-            updateAISuggestions(data.suggestions);
+            console.log('DEBUG: Knowledge snippets received:', data.knowledge_snippets);
+            updateAISuggestions(data.suggestions, data.knowledge_snippets);
         } else {
             console.error('DEBUG: Response success=false');
             showError('Failed to get AI suggestions');
@@ -133,8 +138,9 @@ async function getAIAnalysis(message, sender) {
 }
 
 // Update AI suggestions panel - FIXED to work with backend response
-function updateAISuggestions(suggestions) {
+function updateAISuggestions(suggestions, knowledgeSnippets = []) {
     console.log('DEBUG: updateAISuggestions called with:', suggestions);
+    console.log('DEBUG: updateAISuggestions knowledge snippets:', knowledgeSnippets);
     
     // Update summary with basic conversation info
     const summaryBox = document.getElementById('summaryBox');
@@ -166,9 +172,6 @@ function updateAISuggestions(suggestions) {
                     <button class="suggestion-btn use-btn" onclick="useSuggestion('${cleanSuggestion.replace(/'/g, "\\'")}')">
                         Use This Response
                     </button>
-                    <button class="suggestion-btn copy-btn" onclick="copySuggestion('${cleanSuggestion.replace(/'/g, "\\'")}')">
-                        Copy
-                    </button>
                 </div>
             `;
             suggestionsList.appendChild(suggestionDiv);
@@ -180,10 +183,38 @@ function updateAISuggestions(suggestions) {
         suggestionsList.innerHTML = '<p class="placeholder-text">No suggested responses available.</p>';
     }
     
-    // Update knowledge snippets with placeholder since we don't have this feature yet
-    const knowledgeSnippets = document.getElementById('knowledgeSnippets');
-    knowledgeSnippets.innerHTML = '<p class="placeholder-text">💡 Knowledge base integration will show relevant snippets here based on the conversation context.</p>';
+    // Update knowledge snippets
+    const knowledgeSnippetsElement = document.getElementById('knowledgeSnippets');
+    if (knowledgeSnippets && Array.isArray(knowledgeSnippets) && knowledgeSnippets.length > 0) {
+        console.log('DEBUG: Displaying knowledge snippets:', knowledgeSnippets);
+        knowledgeSnippetsElement.innerHTML = '';
+        
+        knowledgeSnippets.forEach((snippet, index) => {
+            console.log(`DEBUG: Adding knowledge snippet ${index}: ${snippet.length} characters`);
+            
+            const snippetDiv = document.createElement('div');
+            snippetDiv.className = 'knowledge-snippet';
+            
+            // Convert markdown-style formatting to HTML
+            const htmlSnippet = snippet
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold text
+                .replace(/\n/g, '<br>'); // Line breaks
+            
+            snippetDiv.innerHTML = `
+                <div class="snippet-content">
+                    <p>${htmlSnippet}</p>
+                </div>
+            `;
+            knowledgeSnippetsElement.appendChild(snippetDiv);
+        });
+        
+        console.log('DEBUG: Knowledge snippets displayed successfully');
+    } else {
+        console.log('DEBUG: No knowledge snippets to display');
+        knowledgeSnippetsElement.innerHTML = '<p class="placeholder-text">💡 No relevant knowledge base snippets found for this customer inquiry.</p>';
+    }
 }
+
 
 // Use a suggested response
 function useSuggestion(suggestion) {
@@ -193,32 +224,7 @@ function useSuggestion(suggestion) {
     agentInput.focus();
 }
 
-// Copy suggestion to clipboard
-function copySuggestion(suggestion) {
-    console.log('DEBUG: Copying suggestion:', suggestion);
-    
-    navigator.clipboard.writeText(suggestion).then(() => {
-        // Show feedback
-        const copyBtn = event.target;
-        const originalText = copyBtn.textContent;
-        copyBtn.textContent = 'Copied!';
-        copyBtn.style.backgroundColor = '#27ae60';
-        
-        setTimeout(() => {
-            copyBtn.textContent = originalText;
-            copyBtn.style.backgroundColor = '';
-        }, 1000);
-    }).catch(err => {
-        console.error('Failed to copy text: ', err);
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = suggestion;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-    });
-}
+
 
 // Show error message
 function showError(message) {

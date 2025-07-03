@@ -157,8 +157,8 @@ class RAGSystem:
             print(f"DEBUG: Exception in answer_question: {e}")
             return f"Error answering question: {e}"
 
-    def get_suggestions(self, message: str, conversation_context: List[Dict], sender: str) -> List[str]:
-        """Generate AI suggestions based on conversation context and sender type."""
+    def get_suggestions(self, message: str, conversation_context: List[Dict], sender: str) -> Dict[str, List[str]]:
+        """Generate AI suggestions and retrieve relevant knowledge base snippets."""
         print(f"DEBUG: get_suggestions called")
         print(f"DEBUG: message: '{message}'")
         print(f"DEBUG: sender: '{sender}'")
@@ -166,30 +166,39 @@ class RAGSystem:
         
         if not self.index:
             print("DEBUG: Index not available")
-            return ["Knowledge base is not loaded. Please add documents to the knowledge_base folder."]
+            return {
+                "suggestions": ["Knowledge base is not loaded. Please add documents to the knowledge_base folder."],
+                "knowledge_snippets": []
+            }
         
         try:
             # Create context-aware suggestions based on sender type
             if sender == 'customer':
-                print("DEBUG: Generating customer suggestions")
-                suggestions = self._generate_customer_suggestions(message, conversation_context)
+                print("DEBUG: Customer message - Using RAG to generate agent response suggestions")
+                result = self._generate_customer_suggestions(message, conversation_context)
             elif sender == 'agent':
-                print("DEBUG: Generating agent suggestions")
-                suggestions = self._generate_agent_suggestions(message, conversation_context)
+                print("DEBUG: Agent message - Using static suggestions (NO RAG)")
+                result = self._generate_agent_suggestions(message, conversation_context)
             else:
                 print(f"DEBUG: Unknown sender type: {sender}")
-                suggestions = ["Please specify sender type (customer or agent)"]
+                result = {
+                    "suggestions": ["Please specify sender type (customer or agent)"],
+                    "knowledge_snippets": []
+                }
             
-            print(f"DEBUG: Final suggestions: {suggestions}")
-            return suggestions
+            print(f"DEBUG: Final result: {result}")
+            return result
             
         except Exception as e:
             print(f"DEBUG: Exception in get_suggestions: {e}")
-            return [f"Error generating suggestions: {e}"]
+            return {
+                "suggestions": [f"Error generating suggestions: {e}"],
+                "knowledge_snippets": []
+            }
 
-    def _generate_customer_suggestions(self, message: str, conversation_context: List[Dict]) -> List[str]:
-        """Generate suggestions for customer messages."""
-        print("DEBUG: _generate_customer_suggestions called")
+    def _generate_customer_suggestions(self, message: str, conversation_context: List[Dict]) -> Dict[str, List[str]]:
+        """Generate suggestions for customer messages using RAG to retrieve relevant knowledge snippets."""
+        print("DEBUG: _generate_customer_suggestions called (WITH RAG)")
         
         # Build context from conversation history
         context = self._build_conversation_context(conversation_context)
@@ -211,63 +220,135 @@ class RAGSystem:
             print(f"DEBUG: Raw customer response: {response}")
             print(f"DEBUG: Customer response type: {type(response)}")
             
+            # Extract suggestions
             response_str = str(response)
             print(f"DEBUG: Customer response as string: '{response_str}'")
-            print(f"DEBUG: Customer response length: {len(response_str)}")
             
-            # Parse the response into a list of suggestions
             suggestions = self._parse_suggestions(response_str)
-            print(f"DEBUG: Parsed customer suggestions: {suggestions}")
-            
             final_suggestions = suggestions[:3]  # Return max 3 suggestions
-            print(f"DEBUG: Final customer suggestions: {final_suggestions}")
             
-            return final_suggestions
+            # Extract knowledge snippets from source nodes
+            knowledge_snippets = self._extract_knowledge_snippets(response)
+            
+            print(f"DEBUG: Final customer suggestions: {final_suggestions}")
+            print(f"DEBUG: Knowledge snippets: {knowledge_snippets}")
+            
+            return {
+                "suggestions": final_suggestions,
+                "knowledge_snippets": knowledge_snippets
+            }
             
         except Exception as e:
             print(f"DEBUG: Exception in _generate_customer_suggestions: {e}")
-            return [f"Error generating customer suggestions: {e}"]
+            return {
+                "suggestions": [f"Error generating customer suggestions: {e}"],
+                "knowledge_snippets": []
+            }
 
-    def _generate_agent_suggestions(self, message: str, conversation_context: List[Dict]) -> List[str]:
-        """Generate suggestions for agent messages."""
-        print("DEBUG: _generate_agent_suggestions called")
+    def _generate_agent_suggestions(self, message: str, conversation_context: List[Dict]) -> Dict[str, List[str]]:
+        """Generate suggestions for agent messages without using RAG (no knowledge base retrieval)."""
+        print("DEBUG: _generate_agent_suggestions called (NO RAG)")
         
         # Build context from conversation history
         context = self._build_conversation_context(conversation_context)
         print(f"DEBUG: Built context: '{context}'")
         
-        # Create a prompt for agent assistance
-        prompt = f"""
-        Based on the agent's message: "{message}"
-        And conversation context: {context}
-        
-        Generate 3 suggestions for improving the agent's response or providing additional information.
-        Focus on knowledge base information, best practices, and professional communication.
-        """
-        print(f"DEBUG: Agent prompt: '{prompt}'")
-        
+        # Generate static suggestions based on common best practices
+        # No RAG retrieval for agent messages
         try:
-            print("DEBUG: Sending query to query engine for agent suggestions...")
-            response = self.query_engine.query(prompt)
-            print(f"DEBUG: Raw agent response: {response}")
-            print(f"DEBUG: Agent response type: {type(response)}")
+            print("DEBUG: Generating static agent suggestions without RAG...")
             
-            response_str = str(response)
-            print(f"DEBUG: Agent response as string: '{response_str}'")
-            print(f"DEBUG: Agent response length: {len(response_str)}")
+            # Analyze the agent message and context to provide relevant suggestions
+            agent_message_lower = message.lower()
             
-            # Parse the response into a list of suggestions
-            suggestions = self._parse_suggestions(response_str)
-            print(f"DEBUG: Parsed agent suggestions: {suggestions}")
+            suggestions = []
             
-            final_suggestions = suggestions[:3]  # Return max 3 suggestions
-            print(f"DEBUG: Final agent suggestions: {final_suggestions}")
+            # Provide suggestions based on message content and best practices
+            if any(word in agent_message_lower for word in ['sorry', 'apologize', 'apologies']):
+                suggestions = [
+                    "Consider offering a specific solution or next step after the apology.",
+                    "Acknowledge the customer's frustration and provide a timeline for resolution.",
+                    "Follow up with 'What can I do to make this right for you?'"
+                ]
+            elif any(word in agent_message_lower for word in ['understand', 'hear', 'see']):
+                suggestions = [
+                    "Build on this empathy by asking clarifying questions to better understand their needs.",
+                    "Provide specific examples of how you can help resolve their concern.",
+                    "Offer multiple options or solutions when possible."
+                ]
+            elif any(word in agent_message_lower for word in ['help', 'assist', 'support']):
+                suggestions = [
+                    "Be specific about what help you can provide and set clear expectations.",
+                    "Ask if there are any other concerns while you have them on the line.",
+                    "Provide your direct contact information for future assistance."
+                ]
+            elif any(word in agent_message_lower for word in ['thank', 'thanks']):
+                suggestions = [
+                    "Express genuine appreciation and ask if there's anything else you can help with.",
+                    "Reinforce the value of their business and your commitment to service.",
+                    "Invite them to reach out again if they have future questions."
+                ]
+            else:
+                # Default suggestions for general agent communication
+                suggestions = [
+                    "Ensure you're being clear and specific in your communication.",
+                    "Ask open-ended questions to better understand the customer's needs.",
+                    "Provide a clear next step or timeline for any actions you'll take."
+                ]
             
-            return final_suggestions
+            print(f"DEBUG: Generated static agent suggestions: {suggestions}")
+            
+            return {
+                "suggestions": suggestions[:3],  # Return max 3 suggestions
+                "knowledge_snippets": []  # No knowledge snippets for agent messages
+            }
             
         except Exception as e:
             print(f"DEBUG: Exception in _generate_agent_suggestions: {e}")
-            return [f"Error generating agent suggestions: {e}"]
+            return {
+                "suggestions": [f"Error generating agent suggestions: {e}"],
+                "knowledge_snippets": []
+            }
+
+    def _extract_knowledge_snippets(self, response) -> List[str]:
+        """Extract knowledge base snippets from LlamaIndex response source nodes."""
+        print("DEBUG: _extract_knowledge_snippets called")
+        
+        snippets = []
+        
+        try:
+            # Access source nodes from the response
+            if hasattr(response, 'source_nodes') and response.source_nodes:
+                print(f"DEBUG: Found {len(response.source_nodes)} source nodes")
+                
+                for i, node in enumerate(response.source_nodes[:3]):  # Max 3 snippets
+                    print(f"DEBUG: Processing source node {i}")
+                    
+                    # Get the text content
+                    text = node.text if hasattr(node, 'text') else str(node)
+                    
+                    # Get the source file name
+                    file_name = "Unknown"
+                    if hasattr(node, 'metadata') and 'file_name' in node.metadata:
+                        file_name = node.metadata['file_name']
+                    elif hasattr(node, 'node') and hasattr(node.node, 'metadata') and 'file_name' in node.node.metadata:
+                        file_name = node.node.metadata['file_name']
+                    
+                    # Create a formatted snippet with full text (no truncation)
+                    snippet = f"📄 **{file_name}**\n{text}"
+                    snippets.append(snippet)
+                    print(f"DEBUG: Added snippet from {file_name}: {len(text)} characters")
+                    
+            else:
+                print("DEBUG: No source nodes found in response")
+                
+        except Exception as e:
+            print(f"DEBUG: Error extracting knowledge snippets: {e}")
+            # Fallback: create a generic snippet
+            snippets = ["📄 **Knowledge Base**: Information retrieved from knowledge base documents"]
+        
+        print(f"DEBUG: Final snippets: {len(snippets)} items")
+        return snippets
 
     def _build_conversation_context(self, conversation_context: List[Dict]) -> str:
         """Build a string representation of the conversation context."""
@@ -375,26 +456,29 @@ class RAGSystem:
         print(f"Result: '{result}'")
         
         # Test suggestions
-        print("\n2. Testing customer suggestions...")
-        suggestions = self.get_suggestions(
+        print("\n2. Testing customer suggestions (WITH RAG)...")
+        customer_result = self.get_suggestions(
             message="I need help with my account",
             conversation_context=[],
             sender="customer"
         )
-        print(f"Suggestions: {suggestions}")
+        print(f"Customer result (with knowledge retrieval): {customer_result}")
         
         # Test agent suggestions  
-        print("\n3. Testing agent suggestions...")
-        suggestions = self.get_suggestions(
+        print("\n3. Testing agent suggestions (WITHOUT RAG)...")
+        agent_result = self.get_suggestions(
             message="I understand your concern",
             conversation_context=[{"sender": "customer", "message": "I need help with my account"}],
             sender="agent"
         )
-        print(f"Suggestions: {suggestions}")
+        print(f"Agent result (static suggestions only): {agent_result}")
         
         print("\n=== DEBUG: Test Complete ===")
         
         return {
             'basic_question': result,
-            'customer_suggestions': suggestions
+            'customer_suggestions': customer_result.get('suggestions', []) if isinstance(customer_result, dict) else customer_result,
+            'customer_knowledge_snippets': customer_result.get('knowledge_snippets', []) if isinstance(customer_result, dict) else [],
+            'agent_suggestions': agent_result.get('suggestions', []) if isinstance(agent_result, dict) else agent_result,
+            'agent_knowledge_snippets': agent_result.get('knowledge_snippets', []) if isinstance(agent_result, dict) else []
         }

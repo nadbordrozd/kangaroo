@@ -283,7 +283,37 @@ body {
     border-radius: 6px;
     border: 1px solid #e1e5e9;
     position: relative;
+    max-height: 300px;
+    overflow-y: auto;
 }
+
+.suggestion-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    justify-content: flex-end;
+}
+
+.suggestion-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.8em;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.use-btn {
+    background: linear-gradient(45deg, #4caf50, #45a049);
+    color: white;
+}
+
+.use-btn:hover {
+    background: linear-gradient(45deg, #45a049, #3d8b40);
+    transform: translateY(-1px);
+}
+
+
 
 .snippet-source {
     font-size: 0.8em;
@@ -297,6 +327,26 @@ body {
 .snippet-content {
     line-height: 1.5;
     color: #444;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Add a subtle shadow at the bottom when content is scrollable */
+.knowledge-snippet::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, transparent, rgba(248, 249, 250, 0.8));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.knowledge-snippet:hover::after {
+    opacity: 1;
 }
 
 .relevance-badge {
@@ -309,24 +359,28 @@ body {
 
 /* Scrollbar Styling */
 .chat-messages::-webkit-scrollbar,
-.ai-content::-webkit-scrollbar {
+.ai-content::-webkit-scrollbar,
+.knowledge-snippet::-webkit-scrollbar {
     width: 6px;
 }
 
 .chat-messages::-webkit-scrollbar-track,
-.ai-content::-webkit-scrollbar-track {
+.ai-content::-webkit-scrollbar-track,
+.knowledge-snippet::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 3px;
 }
 
 .chat-messages::-webkit-scrollbar-thumb,
-.ai-content::-webkit-scrollbar-thumb {
+.ai-content::-webkit-scrollbar-thumb,
+.knowledge-snippet::-webkit-scrollbar-thumb {
     background: #c1c1c1;
     border-radius: 3px;
 }
 
 .chat-messages::-webkit-scrollbar-thumb:hover,
-.ai-content::-webkit-scrollbar-thumb:hover {
+.ai-content::-webkit-scrollbar-thumb:hover,
+.knowledge-snippet::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }
 
