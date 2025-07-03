@@ -48,7 +48,7 @@ class RAGSystem:
             raise ValueError("OPENAI_API_KEY not found in environment variables.")
         
         # Set up models using Settings (LlamaIndex's global configuration)git s
-        Settings.llm = OpenAI(model="gpt-4", api_key=openai_api_key, temperature=0.1)
+        Settings.llm = OpenAI(model="gpt-4.1", api_key=openai_api_key, temperature=0.1)
         Settings.embed_model = OpenAIEmbedding(
             model="text-embedding-3-large", 
             api_key=openai_api_key
@@ -97,7 +97,7 @@ class RAGSystem:
             return True
         
         # Check if index files exist
-        index_files = ['docstore.json', 'index_store.json', 'vector_store.json']
+        index_files = ['docstore.json', 'index_store.json', 'default__vector_store.json']
         for index_file in index_files:
             if not os.path.exists(os.path.join(self.persist_dir, index_file)):
                 logger.debug(f"Index file {index_file} missing, will rebuild index")
