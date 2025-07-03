@@ -4,4 +4,3 @@ numpy>=1.24.0
 scikit-learn>=1.3.0
 python-dotenv>=1.0.0
 llama-index
-faiss-cpu 

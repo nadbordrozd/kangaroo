@@ -8,12 +8,10 @@ load_dotenv()
 app = Flask(__name__)
 
 # Initialize RAG system
-# Set use_faiss=True if you want to use FAISS (requires: pip install faiss-cpu)
-# Set use_faiss=False to use the default vector store (simpler, no extra dependencies)
 # similarity_top_k=5 means retrieve top 5 most relevant chunks for each query
 # persist_dir stores the cached embeddings to avoid re-computing on restart
 # use_reranker=True enables LLM-based relevance filtering of retrieved chunks (more API calls but better quality)
-rag_system = RAGSystem(use_faiss=False, similarity_top_k=5, persist_dir='./storage', use_reranker=True)
+rag_system = RAGSystem(similarity_top_k=5, persist_dir='./storage', use_reranker=True)
 
 @app.route('/')
 def index():

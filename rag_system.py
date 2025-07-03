@@ -31,9 +31,8 @@ if not logger.handlers:
     logger.addHandler(console_handler)
 
 class RAGSystem:
-    def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False, similarity_top_k: int = 5, persist_dir: str = './storage', use_reranker: bool = False):
+    def __init__(self, knowledge_base_path: str = 'knowledge_base', similarity_top_k: int = 5, persist_dir: str = './storage', use_reranker: bool = False):
         self.knowledge_base_path = knowledge_base_path
-        self.use_faiss = use_faiss
         self.similarity_top_k = similarity_top_k
         self.persist_dir = persist_dir
         self.use_reranker = use_reranker
@@ -160,7 +159,6 @@ class RAGSystem:
             'modification_time': self._get_files_modification_time(files),
             'created_at': time.time(),
             'similarity_top_k': self.similarity_top_k,
-            'use_faiss': self.use_faiss,
             'use_reranker': self.use_reranker
         }
         
@@ -239,29 +237,11 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         else:
             logger.debug(f"Cache directory doesn't exist: {self.persist_dir}")
 
-    def _setup_vector_store(self):
-        """Setup vector store based on configuration."""
-        if self.use_faiss:
-            try:
-                import faiss
-                from llama_index.vector_stores.faiss import FaissVectorStore
-                
-                # Get embedding dimension (OpenAI text-embedding-3-large is 3072 dimensions)
-                embedding_dim = 3072
-                faiss_index = faiss.IndexFlatL2(embedding_dim)
-                vector_store = FaissVectorStore(faiss_index=faiss_index)
-                print("Using FAISS vector store")
-                return vector_store
-            except ImportError:
-                print("FAISS not available, falling back to default vector store")
-                return None
-        else:
-            # Use default vector store (SimpleVectorStore)
-            print("Using default vector store")
-            return None
+
 
     def _load_knowledge_base(self):
         """Load and index the knowledge base documents with disk caching."""
+        logger.debug('loading knowledge base')
         # Create directory if it doesn't exist
         if not os.path.exists(self.knowledge_base_path):
             os.makedirs(self.knowledge_base_path)
@@ -301,18 +281,9 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                     logger.info("No documents loaded from knowledge base.")
                     return
                 
-                # Setup vector store
-                vector_store = self._setup_vector_store()
-                
-                # Create index
-                if vector_store:
-                    self.index = VectorStoreIndex.from_documents(
-                        documents,
-                        vector_store=vector_store
-                    )
-                else:
-                    # Use default vector store
-                    self.index = VectorStoreIndex.from_documents(documents)
+                # Create index with default vector store
+                logger.debug("Creating index with default vector store")
+                self.index = VectorStoreIndex.from_documents(documents)
                 
                 # Persist the index to storage
                 logger.debug(f"Saving index to {self.persist_dir}...")
@@ -605,7 +576,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             'documents_found': len(txt_files) > 0,
             'document_count': len(txt_files),
             'document_files': txt_files,
-            'vector_store_type': 'FAISS' if self.use_faiss else 'Default',
+            'vector_store_type': 'Default',
             'similarity_top_k': self.similarity_top_k,
             'persist_dir': self.persist_dir,
             'storage_exists': storage_exists,
