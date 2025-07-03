@@ -169,11 +169,16 @@ function updateAISuggestions(suggestions, knowledgeSnippets = []) {
                     <p>${cleanSuggestion}</p>
                 </div>
                 <div class="suggestion-actions">
-                    <button class="suggestion-btn use-btn" onclick="useSuggestion('${cleanSuggestion.replace(/'/g, "\\'")}')">
+                    <button class="suggestion-btn use-btn">
                         Use This Response
                     </button>
                 </div>
             `;
+            
+            // Add event listener to avoid inline onclick issues with special characters
+            const useButton = suggestionDiv.querySelector('.use-btn');
+            useButton.addEventListener('click', () => useSuggestion(cleanSuggestion));
+            
             suggestionsList.appendChild(suggestionDiv);
         });
         
