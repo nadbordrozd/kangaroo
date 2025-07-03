@@ -12,7 +12,8 @@ app = Flask(__name__)
 # Set use_faiss=False to use the default vector store (simpler, no extra dependencies)
 # similarity_top_k=5 means retrieve top 5 most relevant chunks for each query
 # persist_dir stores the cached embeddings to avoid re-computing on restart
-rag_system = RAGSystem(use_faiss=False, similarity_top_k=5, persist_dir='./storage')
+# use_reranker=True enables LLM-based relevance filtering of retrieved chunks (more API calls but better quality)
+rag_system = RAGSystem(use_faiss=False, similarity_top_k=5, persist_dir='./storage', use_reranker=True)
 
 @app.route('/')
 def index():
@@ -166,6 +167,10 @@ if __name__ == '__main__':
     print("Note: Now using OpenAI GPT-4 for both embeddings and text generation!")
     print(f"Configuration: Retrieving top {rag_system.similarity_top_k} most relevant chunks per query")
     print(f"Storage: Embeddings cached in '{rag_system.persist_dir}' directory")
+    if rag_system.use_reranker:
+        print("Reranker: ENABLED - Using GPT-4o-mini for relevance filtering (higher quality, more API calls)")
+    else:
+        print("Reranker: DISABLED - Using all retrieved chunks (faster, fewer API calls)")
     
     # Check system status on startup
     status = rag_system.get_system_status()

@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import asyncio
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Settings, StorageContext, load_index_from_storage
@@ -14,14 +15,16 @@ from llama_index.core.chat_engine import CondenseQuestionChatEngine
 load_dotenv()
 
 class RAGSystem:
-    def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False, similarity_top_k: int = 5, persist_dir: str = './storage'):
+    def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False, similarity_top_k: int = 5, persist_dir: str = './storage', use_reranker: bool = False):
         self.knowledge_base_path = knowledge_base_path
         self.use_faiss = use_faiss
         self.similarity_top_k = similarity_top_k
         self.persist_dir = persist_dir
+        self.use_reranker = use_reranker
         self.index: Optional[VectorStoreIndex] = None
         self.query_engine = None
         self.chat_engine = None
+        self.reranker_llm = None
         self._setup_system()
 
     def _setup_system(self):
@@ -37,6 +40,13 @@ class RAGSystem:
             model="text-embedding-3-large", 
             api_key=openai_api_key
         )
+        
+        # Set up reranker LLM if enabled
+        if self.use_reranker:
+            self.reranker_llm = OpenAI(model="gpt-4o-mini", api_key=openai_api_key, temperature=0.0)
+            print("DEBUG: Reranker LLM (GPT-4o-mini) configured")
+        else:
+            print("DEBUG: Reranker disabled")
         
         # Set up document processing
         Settings.node_parser = SentenceSplitter(
@@ -92,6 +102,8 @@ class RAGSystem:
             
             stored_files = set(metadata.get('files', []))
             stored_mod_time = metadata.get('modification_time', 0)
+            stored_similarity_top_k = metadata.get('similarity_top_k', 3)
+            stored_use_reranker = metadata.get('use_reranker', False)
             
             current_files = set(self._get_knowledge_base_files())
             current_mod_time = self._get_files_modification_time(list(current_files))
@@ -103,6 +115,15 @@ class RAGSystem:
             
             if current_mod_time > stored_mod_time:
                 print("DEBUG: Knowledge base files modified, will rebuild index")
+                return True
+            
+            # Rebuild if configuration changed (though this doesn't affect cached embeddings)
+            if stored_similarity_top_k != self.similarity_top_k:
+                print("DEBUG: similarity_top_k changed, will rebuild index")
+                return True
+            
+            if stored_use_reranker != self.use_reranker:
+                print("DEBUG: reranker configuration changed, will rebuild index")
                 return True
             
             print("DEBUG: Index is up to date, will load from storage")
@@ -120,13 +141,75 @@ class RAGSystem:
             'modification_time': self._get_files_modification_time(files),
             'created_at': time.time(),
             'similarity_top_k': self.similarity_top_k,
-            'use_faiss': self.use_faiss
+            'use_faiss': self.use_faiss,
+            'use_reranker': self.use_reranker
         }
         
         metadata_file = os.path.join(self.persist_dir, 'metadata.json')
         with open(metadata_file, 'w') as f:
             json.dump(metadata, f, indent=2)
         print(f"DEBUG: Saved metadata to {metadata_file}")
+
+    async def _check_chunk_relevance(self, chunk_text: str, conversation_context: str, customer_message: str) -> bool:
+        """Check if a chunk is relevant to the conversation using GPT-4o-mini."""
+        if not self.use_reranker or not self.reranker_llm:
+            return True  # If reranker disabled, consider all chunks relevant
+        
+        prompt = f"""
+You are a relevance judge for a customer service knowledge base system.
+
+CUSTOMER MESSAGE: "{customer_message}"
+CONVERSATION CONTEXT: {conversation_context}
+
+KNOWLEDGE BASE CHUNK:
+{chunk_text}
+
+TASK: Determine if this knowledge base chunk is relevant to helping answer the customer's message within the conversation context.
+
+CRITERIA:
+- Is the chunk directly related to the customer's question or concern?
+- Does the chunk contain information that would help a customer service agent respond appropriately?
+- Would this information be useful for addressing the customer's needs?
+
+RESPOND: Answer only with "true" or "false" (no explanation needed).
+"""
+        
+        try:
+            response = await self.reranker_llm.acomplete(prompt)
+            result = str(response).strip().lower()
+            return result == "true"
+        except Exception as e:
+            print(f"DEBUG: Error in relevance check: {e}, defaulting to relevant")
+            return True  # Default to relevant if error occurs
+
+    async def _rerank_chunks(self, chunks: List, conversation_context: str, customer_message: str) -> List:
+        """Filter chunks based on relevance using parallel LLM calls."""
+        if not self.use_reranker or not chunks:
+            return chunks
+        
+        print(f"DEBUG: Reranking {len(chunks)} chunks for relevance...")
+        
+        # Create tasks for parallel relevance checking
+        tasks = []
+        for chunk in chunks:
+            chunk_text = chunk.text if hasattr(chunk, 'text') else str(chunk)
+            task = self._check_chunk_relevance(chunk_text, conversation_context, customer_message)
+            tasks.append(task)
+        
+        # Execute all relevance checks in parallel
+        relevance_results = await asyncio.gather(*tasks)
+        
+        # Filter chunks based on relevance
+        relevant_chunks = []
+        for chunk, is_relevant in zip(chunks, relevance_results):
+            if is_relevant:
+                relevant_chunks.append(chunk)
+                print(f"DEBUG: Chunk relevant - keeping")
+            else:
+                print(f"DEBUG: Chunk not relevant - filtering out")
+        
+        print(f"DEBUG: Reranking complete: {len(relevant_chunks)}/{len(chunks)} chunks kept")
+        return relevant_chunks
 
     def clear_cache(self):
         """Clear the cached embeddings and force rebuild on next load."""
@@ -242,15 +325,6 @@ class RAGSystem:
             )
             print(f"DEBUG: Chat engine created with memory buffer")
             
-            # Test query engine
-            print("DEBUG: Testing query engine with simple question...")
-            try:
-                test_response = self.query_engine.query("What is this knowledge base about?")
-                print(f"DEBUG: Test query response: '{test_response}'")
-                print(f"DEBUG: Test query response type: {type(test_response)}")
-            except Exception as e:
-                print(f"DEBUG: Test query failed: {e}")
-            
         except Exception as e:
             print(f"Error loading knowledge base: {e}")
             print(f"DEBUG: Full exception details: {type(e).__name__}: {str(e)}")
@@ -338,23 +412,108 @@ class RAGSystem:
         print(f"DEBUG: Customer prompt: '{prompt}'")
         
         try:
-            print("DEBUG: Sending query to query engine for customer suggestions...")
-            response = self.query_engine.query(prompt)
-            print(f"DEBUG: Raw customer response: {response}")
-            print(f"DEBUG: Customer response type: {type(response)}")
+            if self.use_reranker:
+                # Use custom retrieval with reranking
+                print("DEBUG: Using custom retrieval with reranking...")
+                return self._generate_with_reranking(prompt, message, context)
+            else:
+                # Use standard query engine
+                print("DEBUG: Using standard query engine...")
+                response = self.query_engine.query(prompt)
+                print(f"DEBUG: Raw customer response: {response}")
+                print(f"DEBUG: Customer response type: {type(response)}")
+                
+                # Extract suggestions
+                response_str = str(response)
+                print(f"DEBUG: Customer response as string: '{response_str}'")
+                
+                suggestions = self._parse_suggestions(response_str)
+                final_suggestions = suggestions[:3]  # Return max 3 suggestions (but up to similarity_top_k knowledge snippets)
+                
+                # Extract knowledge snippets from source nodes
+                knowledge_snippets = self._extract_knowledge_snippets(response)
+                
+                print(f"DEBUG: Final customer suggestions: {final_suggestions}")
+                print(f"DEBUG: Knowledge snippets: {knowledge_snippets}")
+                
+                return {
+                    "suggestions": final_suggestions,
+                    "knowledge_snippets": knowledge_snippets
+                }
             
-            # Extract suggestions
+        except Exception as e:
+            print(f"DEBUG: Exception in _generate_customer_suggestions: {e}")
+            return {
+                "suggestions": [f"Error generating customer suggestions: {e}"],
+                "knowledge_snippets": []
+            }
+
+    def _generate_with_reranking(self, prompt: str, customer_message: str, conversation_context: str) -> Dict[str, List[str]]:
+        """Generate suggestions using custom retrieval with reranking."""
+        try:
+            # Step 1: Retrieve raw chunks from vector store
+            print("DEBUG: Retrieving chunks from vector store...")
+            retriever = self.index.as_retriever(similarity_top_k=self.similarity_top_k)
+            retrieved_nodes = retriever.retrieve(prompt)
+            print(f"DEBUG: Retrieved {len(retrieved_nodes)} initial chunks")
+            
+            # Step 2: Apply reranking in an async context
+            print("DEBUG: Applying reranking...")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                filtered_nodes = loop.run_until_complete(
+                    self._rerank_chunks(retrieved_nodes, conversation_context, customer_message)
+                )
+            finally:
+                loop.close()
+            
+            if not filtered_nodes:
+                print("DEBUG: No relevant chunks found after reranking")
+                return {
+                    "suggestions": ["No relevant information found in knowledge base for this query."],
+                    "knowledge_snippets": []
+                }
+            
+            # Step 3: Create context from filtered chunks
+            context_parts = []
+            for node in filtered_nodes:
+                chunk_text = node.text if hasattr(node, 'text') else str(node)
+                context_parts.append(chunk_text)
+            
+            combined_context = "\n\n".join(context_parts)
+            
+            # Step 4: Generate response using filtered context
+            enhanced_prompt = f"""
+            {prompt}
+            
+            Use the following relevant information from the knowledge base to inform your suggestions:
+            
+            {combined_context}
+            """
+            
+            print("DEBUG: Generating suggestions with reranked context...")
+            response = Settings.llm.complete(enhanced_prompt)
             response_str = str(response)
-            print(f"DEBUG: Customer response as string: '{response_str}'")
             
+            # Step 5: Parse suggestions and create knowledge snippets
             suggestions = self._parse_suggestions(response_str)
-            final_suggestions = suggestions[:3]  # Return max 3 suggestions (but up to similarity_top_k knowledge snippets)
+            final_suggestions = suggestions[:3]
             
-            # Extract knowledge snippets from source nodes
-            knowledge_snippets = self._extract_knowledge_snippets(response)
+            # Create knowledge snippets from filtered nodes
+            knowledge_snippets = []
+            for node in filtered_nodes:
+                chunk_text = node.text if hasattr(node, 'text') else str(node)
+                file_name = "Unknown"
+                if hasattr(node, 'metadata') and 'file_name' in node.metadata:
+                    file_name = node.metadata['file_name']
+                elif hasattr(node, 'node') and hasattr(node.node, 'metadata') and 'file_name' in node.node.metadata:
+                    file_name = node.node.metadata['file_name']
+                
+                snippet = f"📄 **{file_name}**\n{chunk_text}"
+                knowledge_snippets.append(snippet)
             
-            print(f"DEBUG: Final customer suggestions: {final_suggestions}")
-            print(f"DEBUG: Knowledge snippets: {knowledge_snippets}")
+            print(f"DEBUG: Generated {len(final_suggestions)} suggestions with {len(knowledge_snippets)} reranked snippets")
             
             return {
                 "suggestions": final_suggestions,
@@ -362,9 +521,11 @@ class RAGSystem:
             }
             
         except Exception as e:
-            print(f"DEBUG: Exception in _generate_customer_suggestions: {e}")
+            print(f"DEBUG: Exception in _generate_with_reranking: {e}")
+            import traceback
+            traceback.print_exc()
             return {
-                "suggestions": [f"Error generating customer suggestions: {e}"],
+                "suggestions": [f"Error in reranked generation: {e}"],
                 "knowledge_snippets": []
             }
 
@@ -593,7 +754,9 @@ class RAGSystem:
             'persist_dir': self.persist_dir,
             'storage_exists': storage_exists,
             'cache_available': metadata_exists,
-            'storage_info': storage_info
+            'storage_info': storage_info,
+            'use_reranker': self.use_reranker,
+            'reranker_model': 'gpt-4o-mini' if self.use_reranker else None
         }
 
     def debug_test_system(self):
