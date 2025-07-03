@@ -12,9 +12,10 @@ from llama_index.core.chat_engine import CondenseQuestionChatEngine
 load_dotenv()
 
 class RAGSystem:
-    def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False):
+    def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False, similarity_top_k: int = 5):
         self.knowledge_base_path = knowledge_base_path
         self.use_faiss = use_faiss
+        self.similarity_top_k = similarity_top_k
         self.index: Optional[VectorStoreIndex] = None
         self.query_engine = None
         self.chat_engine = None
@@ -103,10 +104,10 @@ class RAGSystem:
             
             # Set up query engine
             self.query_engine = self.index.as_query_engine(
-                similarity_top_k=3,
+                similarity_top_k=self.similarity_top_k,
                 streaming=False
             )
-            print(f"DEBUG: Query engine created with similarity_top_k=3")
+            print(f"DEBUG: Query engine created with similarity_top_k={self.similarity_top_k}")
             
             # Set up chat engine with memory for conversation context
             memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
@@ -225,7 +226,7 @@ class RAGSystem:
             print(f"DEBUG: Customer response as string: '{response_str}'")
             
             suggestions = self._parse_suggestions(response_str)
-            final_suggestions = suggestions[:3]  # Return max 3 suggestions
+            final_suggestions = suggestions[:3]  # Return max 3 suggestions (but up to similarity_top_k knowledge snippets)
             
             # Extract knowledge snippets from source nodes
             knowledge_snippets = self._extract_knowledge_snippets(response)
@@ -321,7 +322,7 @@ class RAGSystem:
             if hasattr(response, 'source_nodes') and response.source_nodes:
                 print(f"DEBUG: Found {len(response.source_nodes)} source nodes")
                 
-                for i, node in enumerate(response.source_nodes[:3]):  # Max 3 snippets
+                for i, node in enumerate(response.source_nodes[:self.similarity_top_k]):  # Max similarity_top_k snippets
                     print(f"DEBUG: Processing source node {i}")
                     
                     # Get the text content
@@ -443,7 +444,8 @@ class RAGSystem:
             'chat_engine_ready': self.chat_engine is not None,
             'documents_found': len([f for f in os.listdir(self.knowledge_base_path) 
                                   if f.endswith('.txt')]) > 0 if os.path.exists(self.knowledge_base_path) else False,
-            'vector_store_type': 'FAISS' if self.use_faiss else 'Default'
+            'vector_store_type': 'FAISS' if self.use_faiss else 'Default',
+            'similarity_top_k': self.similarity_top_k
         }
 
     def debug_test_system(self):

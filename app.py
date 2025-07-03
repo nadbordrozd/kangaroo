@@ -10,7 +10,8 @@ app = Flask(__name__)
 # Initialize RAG system
 # Set use_faiss=True if you want to use FAISS (requires: pip install faiss-cpu)
 # Set use_faiss=False to use the default vector store (simpler, no extra dependencies)
-rag_system = RAGSystem(use_faiss=False)
+# similarity_top_k=5 means retrieve top 5 most relevant chunks for each query
+rag_system = RAGSystem(use_faiss=False, similarity_top_k=5)
 
 @app.route('/')
 def index():
@@ -147,6 +148,7 @@ if __name__ == '__main__':
     print("2. Add your knowledge base files to the 'knowledge_base' folder") 
     print("3. The app will be available at http://localhost:5000")
     print("Note: Now using OpenAI GPT-4 for both embeddings and text generation!")
+    print(f"Configuration: Retrieving top {rag_system.similarity_top_k} most relevant chunks per query")
     
     # Check system status on startup
     status = rag_system.get_system_status()
