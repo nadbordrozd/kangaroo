@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Center AI Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Left Panel: Chat Interface -->
+        <div class="chat-panel">
+            <div class="chat-header">
+                <h2>Contact Center Chat</h2>
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span>Live Chat Session</span>
+                </div>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <!-- Messages will be added here dynamically -->
+            </div>
+            
+            <div class="input-section">
+                <div class="input-group">
+                    <label for="customerInput">Customer:</label>
+                    <div class="input-container">
+                        <input type="text" id="customerInput" placeholder="Type customer message...">
+                        <button onclick="sendMessage('customer')" class="send-btn customer-btn">Send</button>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label for="agentInput">Agent:</label>
+                    <div class="input-container">
+                        <input type="text" id="agentInput" placeholder="Type agent response...">
+                        <button onclick="sendMessage('agent')" class="send-btn agent-btn">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel: AI Suggestions -->
+        <div class="ai-panel">
+            <div class="ai-header">
+                <h2>AI Assistant</h2>
+                <div class="ai-status" id="aiStatus">
+                    <span class="loading-indicator" style="display: none;">🤖 Analyzing...</span>
+                </div>
+            </div>
+            
+            <div class="ai-content">
+                <div class="suggestion-section">
+                    <h3>📋 Summary</h3>
+                    <div class="summary-box" id="summaryBox">
+                        <p class="placeholder-text">AI-generated summary will appear here based on the conversation and relevant SOPs.</p>
+                    </div>
+                </div>
+                
+                <div class="suggestion-section">
+                    <h3>💡 Suggested Responses</h3>
+                    <div class="suggestions-list" id="suggestionsList">
+                        <p class="placeholder-text">Suggested responses will appear here when there's an active conversation.</p>
+                    </div>
+                </div>
+                
+                <div class="suggestion-section">
+                    <h3>📖 Relevant Knowledge Base</h3>
+                    <div class="knowledge-snippets" id="knowledgeSnippets">
+                        <p class="placeholder-text">Relevant snippets from SOPs will appear here.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html> 
