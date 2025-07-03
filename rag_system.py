@@ -2,6 +2,7 @@ import os
 import json
 import time
 import asyncio
+import logging
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Settings, StorageContext, load_index_from_storage
@@ -13,6 +14,22 @@ from llama_index.core.chat_engine import CondenseQuestionChatEngine
 
 # Load environment variables
 load_dotenv()
+
+# Configure logger
+logger = logging.getLogger('RAGSystem')
+logger.setLevel(logging.DEBUG)
+
+# Create console handler for stdout output
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+# Add handler to logger (only if not already added to avoid duplicates)
+if not logger.handlers:
+    logger.addHandler(console_handler)
 
 class RAGSystem:
     def __init__(self, knowledge_base_path: str = 'knowledge_base', use_faiss: bool = False, similarity_top_k: int = 5, persist_dir: str = './storage', use_reranker: bool = False):
@@ -44,9 +61,9 @@ class RAGSystem:
         # Set up reranker LLM if enabled
         if self.use_reranker:
             self.reranker_llm = OpenAI(model="gpt-4o-mini", api_key=openai_api_key, temperature=0.0)
-            print("DEBUG: Reranker LLM (GPT-4o-mini) configured")
+            logger.debug("Reranker LLM (GPT-4o-mini) configured")
         else:
-            print("DEBUG: Reranker disabled")
+            logger.debug("Reranker disabled")
         
         # Set up document processing
         Settings.node_parser = SentenceSplitter(
@@ -79,20 +96,20 @@ class RAGSystem:
         """Check if the index should be rebuilt based on file changes."""
         # Check if storage directory exists
         if not os.path.exists(self.persist_dir):
-            print("DEBUG: Storage directory doesn't exist, will create new index")
+            logger.debug("Storage directory doesn't exist, will create new index")
             return True
         
         # Check if index files exist
         index_files = ['docstore.json', 'index_store.json', 'vector_store.json']
         for index_file in index_files:
             if not os.path.exists(os.path.join(self.persist_dir, index_file)):
-                print(f"DEBUG: Index file {index_file} missing, will rebuild index")
+                logger.debug(f"Index file {index_file} missing, will rebuild index")
                 return True
         
         # Check if metadata file exists
         metadata_file = os.path.join(self.persist_dir, 'metadata.json')
         if not os.path.exists(metadata_file):
-            print("DEBUG: Metadata file missing, will rebuild index")
+            logger.debug("Metadata file missing, will rebuild index")
             return True
         
         # Load metadata and compare file modification times
@@ -110,27 +127,27 @@ class RAGSystem:
             
             # Rebuild if files changed or modification time is newer
             if stored_files != current_files:
-                print("DEBUG: Knowledge base files changed, will rebuild index")
+                logger.debug("Knowledge base files changed, will rebuild index")
                 return True
             
             if current_mod_time > stored_mod_time:
-                print("DEBUG: Knowledge base files modified, will rebuild index")
+                logger.debug("Knowledge base files modified, will rebuild index")
                 return True
             
             # Rebuild if configuration changed (though this doesn't affect cached embeddings)
             if stored_similarity_top_k != self.similarity_top_k:
-                print("DEBUG: similarity_top_k changed, will rebuild index")
+                logger.debug("similarity_top_k changed, will rebuild index")
                 return True
             
             if stored_use_reranker != self.use_reranker:
-                print("DEBUG: reranker configuration changed, will rebuild index")
+                logger.debug("reranker configuration changed, will rebuild index")
                 return True
             
-            print("DEBUG: Index is up to date, will load from storage")
+            logger.debug("Index is up to date, will load from storage")
             return False
             
         except (json.JSONDecodeError, KeyError) as e:
-            print(f"DEBUG: Error reading metadata: {e}, will rebuild index")
+            logger.debug(f"Error reading metadata: {e}, will rebuild index")
             return True
 
     def _save_metadata(self, files: List[str]):
@@ -148,7 +165,7 @@ class RAGSystem:
         metadata_file = os.path.join(self.persist_dir, 'metadata.json')
         with open(metadata_file, 'w') as f:
             json.dump(metadata, f, indent=2)
-        print(f"DEBUG: Saved metadata to {metadata_file}")
+        logger.debug(f"Saved metadata to {metadata_file}")
 
     async def _check_chunk_relevance(self, chunk_text: str, conversation_context: str, customer_message: str) -> bool:
         """Check if a chunk is relevant to the conversation using GPT-4o-mini."""
@@ -179,7 +196,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             result = str(response).strip().lower()
             return result == "true"
         except Exception as e:
-            print(f"DEBUG: Error in relevance check: {e}, defaulting to relevant")
+            logger.debug(f"Error in relevance check: {e}, defaulting to relevant")
             return True  # Default to relevant if error occurs
 
     async def _rerank_chunks(self, chunks: List, conversation_context: str, customer_message: str) -> List:
@@ -187,7 +204,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         if not self.use_reranker or not chunks:
             return chunks
         
-        print(f"DEBUG: Reranking {len(chunks)} chunks for relevance...")
+        logger.debug(f"Reranking {len(chunks)} chunks for relevance...")
         
         # Create tasks for parallel relevance checking
         tasks = []
@@ -204,11 +221,11 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         for chunk, is_relevant in zip(chunks, relevance_results):
             if is_relevant:
                 relevant_chunks.append(chunk)
-                print(f"DEBUG: Chunk relevant - keeping")
+                logger.debug("Chunk relevant - keeping")
             else:
-                print(f"DEBUG: Chunk not relevant - filtering out")
+                logger.debug("Chunk not relevant - filtering out")
         
-        print(f"DEBUG: Reranking complete: {len(relevant_chunks)}/{len(chunks)} chunks kept")
+        logger.debug(f"Reranking complete: {len(relevant_chunks)}/{len(chunks)} chunks kept")
         return relevant_chunks
 
     def clear_cache(self):
@@ -216,9 +233,9 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         import shutil
         if os.path.exists(self.persist_dir):
             shutil.rmtree(self.persist_dir)
-            print(f"DEBUG: Cleared cache directory: {self.persist_dir}")
+            logger.debug(f"Cleared cache directory: {self.persist_dir}")
         else:
-            print(f"DEBUG: Cache directory doesn't exist: {self.persist_dir}")
+            logger.debug(f"Cache directory doesn't exist: {self.persist_dir}")
 
     def _setup_vector_store(self):
         """Setup vector store based on configuration."""
@@ -246,33 +263,33 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         # Create directory if it doesn't exist
         if not os.path.exists(self.knowledge_base_path):
             os.makedirs(self.knowledge_base_path)
-            print(f"Created {self.knowledge_base_path} directory. Please add your text files there.")
+            logger.info(f"Created {self.knowledge_base_path} directory. Please add your text files there.")
             return
         
         # Check for documents
         txt_files = self._get_knowledge_base_files()
         if not txt_files:
-            print("No .txt files found in knowledge_base directory.")
+            logger.info("No .txt files found in knowledge_base directory.")
             return
         
         try:
             # Check if we can load from existing storage
             if not self._should_rebuild_index():
-                print("DEBUG: Loading index from storage...")
+                logger.debug("Loading index from storage...")
                 try:
                     # Load from storage
                     storage_context = StorageContext.from_defaults(persist_dir=self.persist_dir)
                     self.index = load_index_from_storage(storage_context)
-                    print(f"DEBUG: Successfully loaded index from {self.persist_dir}")
+                    logger.debug(f"Successfully loaded index from {self.persist_dir}")
                     
                 except Exception as e:
-                    print(f"DEBUG: Failed to load from storage: {e}, will rebuild")
+                    logger.debug(f"Failed to load from storage: {e}, will rebuild")
                     # Fall through to rebuild
                     pass
             
             # If we don't have an index, create it
             if self.index is None:
-                print("DEBUG: Creating new index...")
+                logger.debug("Creating new index...")
                 
                 # Load documents using SimpleDirectoryReader
                 documents = SimpleDirectoryReader(
@@ -281,7 +298,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 ).load_data()
                 
                 if not documents:
-                    print("No documents loaded from knowledge base.")
+                    logger.info("No documents loaded from knowledge base.")
                     return
                 
                 # Setup vector store
@@ -298,24 +315,24 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                     self.index = VectorStoreIndex.from_documents(documents)
                 
                 # Persist the index to storage
-                print(f"DEBUG: Saving index to {self.persist_dir}...")
+                logger.debug(f"Saving index to {self.persist_dir}...")
                 self.index.storage_context.persist(persist_dir=self.persist_dir)
                 
                 # Save metadata
                 self._save_metadata(txt_files)
                 
-                print(f"DEBUG: Index saved to storage successfully")
-                print(f"Knowledge base indexed successfully from {len(txt_files)} files.")
-                print(f"DEBUG: Total documents processed: {len(documents)}")
+                logger.debug("Index saved to storage successfully")
+                logger.info(f"Knowledge base indexed successfully from {len(txt_files)} files.")
+                logger.debug(f"Total documents processed: {len(documents)}")
             else:
-                print(f"DEBUG: Using cached index for {len(txt_files)} files")
+                logger.debug(f"Using cached index for {len(txt_files)} files")
             
             # Set up query engine
             self.query_engine = self.index.as_query_engine(
                 similarity_top_k=self.similarity_top_k,
                 streaming=False
             )
-            print(f"DEBUG: Query engine created with similarity_top_k={self.similarity_top_k}")
+            logger.debug(f"Query engine created with similarity_top_k={self.similarity_top_k}")
             
             # Set up chat engine with memory for conversation context
             memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
@@ -323,46 +340,46 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 query_engine=self.query_engine,
                 memory=memory
             )
-            print(f"DEBUG: Chat engine created with memory buffer")
+            logger.debug("Chat engine created with memory buffer")
             
         except Exception as e:
-            print(f"Error loading knowledge base: {e}")
-            print(f"DEBUG: Full exception details: {type(e).__name__}: {str(e)}")
+            logger.error(f"Error loading knowledge base: {e}")
+            logger.debug(f"Full exception details: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
 
     def answer_question(self, question: str) -> str:
         """Answer a standalone question using the knowledge base."""
-        print(f"DEBUG: answer_question called with: {question}")
+        logger.debug(f"answer_question called with: {question}")
         
         if not self.query_engine:
-            print("DEBUG: Query engine not available")
+            logger.debug("Query engine not available")
             return "Knowledge base is not loaded or indexed."
         
         try:
-            print("DEBUG: Sending query to query engine...")
+            logger.debug("Sending query to query engine...")
             response = self.query_engine.query(question)
-            print(f"DEBUG: Raw response received: {response}")
-            print(f"DEBUG: Response type: {type(response)}")
+            logger.debug(f"Raw response received: {response}")
+            logger.debug(f"Response type: {type(response)}")
             
             response_str = str(response)
-            print(f"DEBUG: Response as string: '{response_str}'")
-            print(f"DEBUG: Response length: {len(response_str)}")
+            logger.debug(f"Response as string: '{response_str}'")
+            logger.debug(f"Response length: {len(response_str)}")
             
             return response_str
         except Exception as e:
-            print(f"DEBUG: Exception in answer_question: {e}")
+            logger.debug(f"Exception in answer_question: {e}")
             return f"Error answering question: {e}"
 
     def get_suggestions(self, message: str, conversation_context: List[Dict], sender: str) -> Dict[str, List[str]]:
         """Generate AI suggestions and retrieve relevant knowledge base snippets for customer messages."""
-        print(f"DEBUG: get_suggestions called")
-        print(f"DEBUG: message: '{message}'")
-        print(f"DEBUG: sender: '{sender}'")
-        print(f"DEBUG: conversation_context: {conversation_context}")
+        logger.debug("get_suggestions called")
+        logger.debug(f"message: '{message}'")
+        logger.debug(f"sender: '{sender}'")
+        logger.debug(f"conversation_context: {conversation_context}")
         
         if not self.index:
-            print("DEBUG: Index not available")
+            logger.debug("Index not available")
             return {
                 "suggestions": ["Knowledge base is not loaded. Please add documents to the knowledge_base folder."],
                 "knowledge_snippets": []
@@ -371,20 +388,20 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         try:
             # Only process customer messages - agent messages are handled at Flask level
             if sender == 'customer':
-                print("DEBUG: Customer message - Using RAG to generate agent response suggestions")
+                logger.debug("Customer message - Using RAG to generate agent response suggestions")
                 result = self._generate_customer_suggestions(message, conversation_context)
             else:
-                print(f"DEBUG: Non-customer message blocked (sender: {sender})")
+                logger.debug(f"Non-customer message blocked (sender: {sender})")
                 result = {
                     "suggestions": ["Only customer messages are processed by the AI system"],
                     "knowledge_snippets": []
                 }
             
-            print(f"DEBUG: Final result: {result}")
+            logger.debug(f"Final result: {result}")
             return result
             
         except Exception as e:
-            print(f"DEBUG: Exception in get_suggestions: {e}")
+            logger.debug(f"Exception in get_suggestions: {e}")
             return {
                 "suggestions": [f"Error generating suggestions: {e}"],
                 "knowledge_snippets": []
@@ -392,11 +409,11 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
 
     def _generate_customer_suggestions(self, message: str, conversation_context: List[Dict]) -> Dict[str, List[str]]:
         """Generate suggestions for customer messages using RAG to retrieve relevant knowledge snippets."""
-        print("DEBUG: _generate_customer_suggestions called (WITH RAG)")
+        logger.debug("_generate_customer_suggestions called (WITH RAG)")
         
         # Build context from conversation history
         context = self._build_conversation_context(conversation_context)
-        print(f"DEBUG: Built context: '{context}'")
+        logger.debug(f"Built context: '{context}'")
         
         # Create a prompt for customer assistance
         prompt = f"""
@@ -406,31 +423,31 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         Generate one helpful suggestion for how an agent might respond to assist this customer.
         Focus on being helpful, professional, and solution-oriented.
         """
-        print(f"DEBUG: Customer prompt: '{prompt}'")
+        logger.debug(f"Customer prompt: '{prompt}'")
         
         try:
             if self.use_reranker:
                 # Use custom retrieval with reranking
-                print("DEBUG: Using custom retrieval with reranking...")
+                logger.debug("Using custom retrieval with reranking...")
                 return self._generate_with_reranking(prompt, message, context)
             else:
                 # Use standard query engine
-                print("DEBUG: Using standard query engine...")
+                logger.debug("Using standard query engine...")
                 response = self.query_engine.query(prompt)
-                print(f"DEBUG: Raw customer response: {response}")
-                print(f"DEBUG: Customer response type: {type(response)}")
+                logger.debug(f"Raw customer response: {response}")
+                logger.debug(f"Customer response type: {type(response)}")
                 
                 # Use response directly as single suggestion
                 response_str = str(response).strip()
-                print(f"DEBUG: Customer response as string: '{response_str}'")
+                logger.debug(f"Customer response as string: '{response_str}'")
                 
                 final_suggestions = [response_str]  # Single suggestion
                 
                 # Extract knowledge snippets from source nodes
                 knowledge_snippets = self._extract_knowledge_snippets(response)
                 
-                print(f"DEBUG: Final customer suggestion: {final_suggestions}")
-                print(f"DEBUG: Knowledge snippets: {knowledge_snippets}")
+                logger.debug(f"Final customer suggestion: {final_suggestions}")
+                logger.debug(f"Knowledge snippets: {knowledge_snippets}")
                 
                 return {
                     "suggestions": final_suggestions,
@@ -438,7 +455,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 }
             
         except Exception as e:
-            print(f"DEBUG: Exception in _generate_customer_suggestions: {e}")
+            logger.debug(f"Exception in _generate_customer_suggestions: {e}")
             return {
                 "suggestions": [f"Error generating customer suggestions: {e}"],
                 "knowledge_snippets": []
@@ -448,13 +465,13 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         """Generate suggestions using custom retrieval with reranking."""
         try:
             # Step 1: Retrieve raw chunks from vector store
-            print("DEBUG: Retrieving chunks from vector store...")
+            logger.debug("Retrieving chunks from vector store...")
             retriever = self.index.as_retriever(similarity_top_k=self.similarity_top_k)
             retrieved_nodes = retriever.retrieve(prompt)
-            print(f"DEBUG: Retrieved {len(retrieved_nodes)} initial chunks")
+            logger.debug(f"Retrieved {len(retrieved_nodes)} initial chunks")
             
             # Step 2: Apply reranking in an async context
-            print("DEBUG: Applying reranking...")
+            logger.debug("Applying reranking...")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -465,7 +482,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 loop.close()
             
             if not filtered_nodes:
-                print("DEBUG: No relevant chunks found after reranking")
+                logger.debug("No relevant chunks found after reranking")
                 return {
                     "suggestions": ["No relevant information found in knowledge base for this query."],
                     "knowledge_snippets": []
@@ -488,7 +505,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             {combined_context}
             """
             
-            print("DEBUG: Generating suggestions with reranked context...")
+            logger.debug("Generating suggestions with reranked context...")
             response = Settings.llm.complete(enhanced_prompt)
             response_str = str(response)
             
@@ -508,7 +525,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 snippet = f"📄 **{file_name}**\n{chunk_text}"
                 knowledge_snippets.append(snippet)
             
-            print(f"DEBUG: Generated 1 suggestion with {len(knowledge_snippets)} reranked snippets")
+            logger.debug(f"Generated 1 suggestion with {len(knowledge_snippets)} reranked snippets")
             
             return {
                 "suggestions": final_suggestions,
@@ -516,7 +533,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             }
             
         except Exception as e:
-            print(f"DEBUG: Exception in _generate_with_reranking: {e}")
+            logger.debug(f"Exception in _generate_with_reranking: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -524,21 +541,19 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                 "knowledge_snippets": []
             }
 
-
-
     def _extract_knowledge_snippets(self, response) -> List[str]:
         """Extract knowledge base snippets from LlamaIndex response source nodes."""
-        print("DEBUG: _extract_knowledge_snippets called")
+        logger.debug("_extract_knowledge_snippets called")
         
         snippets = []
         
         try:
             # Access source nodes from the response
             if hasattr(response, 'source_nodes') and response.source_nodes:
-                print(f"DEBUG: Found {len(response.source_nodes)} source nodes")
+                logger.debug(f"Found {len(response.source_nodes)} source nodes")
                 
                 for i, node in enumerate(response.source_nodes[:self.similarity_top_k]):  # Max similarity_top_k snippets
-                    print(f"DEBUG: Processing source node {i}")
+                    logger.debug(f"Processing source node {i}")
                     
                     # Get the text content
                     text = node.text if hasattr(node, 'text') else str(node)
@@ -553,25 +568,25 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                     # Create a formatted snippet with full text (no truncation)
                     snippet = f"📄 **{file_name}**\n{text}"
                     snippets.append(snippet)
-                    print(f"DEBUG: Added snippet from {file_name}: {len(text)} characters")
+                    logger.debug(f"Added snippet from {file_name}: {len(text)} characters")
                     
             else:
-                print("DEBUG: No source nodes found in response")
+                logger.debug("No source nodes found in response")
                 
         except Exception as e:
-            print(f"DEBUG: Error extracting knowledge snippets: {e}")
+            logger.debug(f"Error extracting knowledge snippets: {e}")
             # Fallback: create a generic snippet
             snippets = ["📄 **Knowledge Base**: Information retrieved from knowledge base documents"]
         
-        print(f"DEBUG: Final snippets: {len(snippets)} items")
+        logger.debug(f"Final snippets: {len(snippets)} items")
         return snippets
 
     def _build_conversation_context(self, conversation_context: List[Dict]) -> str:
         """Build a string representation of the conversation context."""
-        print(f"DEBUG: _build_conversation_context called with {len(conversation_context)} messages")
+        logger.debug(f"_build_conversation_context called with {len(conversation_context)} messages")
         
         if not conversation_context:
-            print("DEBUG: No conversation context provided")
+            logger.debug("No conversation context provided")
             return "No previous conversation context."
         
         context_parts = []
@@ -580,35 +595,33 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             message = msg.get('message', '')
             context_part = f"{sender}: {message}"
             context_parts.append(context_part)
-            print(f"DEBUG: Context part {i}: '{context_part}'")
+            logger.debug(f"Context part {i}: '{context_part}'")
         
         final_context = " | ".join(context_parts)
-        print(f"DEBUG: Final context string: '{final_context}'")
+        logger.debug(f"Final context string: '{final_context}'")
         return final_context
-
-
 
     def chat(self, message: str) -> str:
         """Chat with the system using conversation memory."""
-        print(f"DEBUG: chat method called with message: '{message}'")
+        logger.debug(f"chat method called with message: '{message}'")
         
         if not self.chat_engine:
-            print("DEBUG: Chat engine not available")
+            logger.debug("Chat engine not available")
             return "Chat engine is not available. Please ensure the knowledge base is loaded."
         
         try:
-            print("DEBUG: Sending message to chat engine...")
+            logger.debug("Sending message to chat engine...")
             response = self.chat_engine.chat(message)
-            print(f"DEBUG: Raw chat response: {response}")
-            print(f"DEBUG: Chat response type: {type(response)}")
+            logger.debug(f"Raw chat response: {response}")
+            logger.debug(f"Chat response type: {type(response)}")
             
             response_str = str(response)
-            print(f"DEBUG: Chat response as string: '{response_str}'")
-            print(f"DEBUG: Chat response length: {len(response_str)}")
+            logger.debug(f"Chat response as string: '{response_str}'")
+            logger.debug(f"Chat response length: {len(response_str)}")
             
             return response_str
         except Exception as e:
-            print(f"DEBUG: Exception in chat: {e}")
+            logger.debug(f"Exception in chat: {e}")
             import traceback
             traceback.print_exc()
             return f"Error in chat: {e}"
