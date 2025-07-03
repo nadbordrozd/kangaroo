@@ -9,8 +9,7 @@ from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Settings, 
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.chat_engine import CondenseQuestionChatEngine
+
 
 # Load environment variables
 load_dotenv()
@@ -40,7 +39,6 @@ class RAGSystem:
         self.use_reranker = use_reranker
         self.index: Optional[VectorStoreIndex] = None
         self.query_engine = None
-        self.chat_engine = None
         self.reranker_llm = None
         self._setup_system()
 
@@ -95,6 +93,7 @@ class RAGSystem:
     def _should_rebuild_index(self) -> bool:
         """Check if the index should be rebuilt based on file changes."""
         # Check if storage directory exists
+        logger.warning(f"Checking if index should be rebuilt: {self.persist_dir}")
         if not os.path.exists(self.persist_dir):
             logger.debug("Storage directory doesn't exist, will create new index")
             return True
@@ -149,6 +148,9 @@ class RAGSystem:
         except (json.JSONDecodeError, KeyError) as e:
             logger.debug(f"Error reading metadata: {e}, will rebuild index")
             return True
+        
+        logger.warning('Index is up to date, will load from storage')
+        return False
 
     def _save_metadata(self, files: List[str]):
         """Save metadata about the current index."""
@@ -271,7 +273,6 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         if not txt_files:
             logger.info("No .txt files found in knowledge_base directory.")
             return
-        
         try:
             # Check if we can load from existing storage
             if not self._should_rebuild_index():
@@ -286,7 +287,6 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
                     logger.debug(f"Failed to load from storage: {e}, will rebuild")
                     # Fall through to rebuild
                     pass
-            
             # If we don't have an index, create it
             if self.index is None:
                 logger.debug("Creating new index...")
@@ -334,13 +334,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             )
             logger.debug(f"Query engine created with similarity_top_k={self.similarity_top_k}")
             
-            # Set up chat engine with memory for conversation context
-            memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
-            self.chat_engine = CondenseQuestionChatEngine.from_defaults(
-                query_engine=self.query_engine,
-                memory=memory
-            )
-            logger.debug("Chat engine created with memory buffer")
+
             
         except Exception as e:
             logger.error(f"Error loading knowledge base: {e}")
@@ -348,28 +342,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
             import traceback
             traceback.print_exc()
 
-    def answer_question(self, question: str) -> str:
-        """Answer a standalone question using the knowledge base."""
-        logger.debug(f"answer_question called with: {question}")
-        
-        if not self.query_engine:
-            logger.debug("Query engine not available")
-            return "Knowledge base is not loaded or indexed."
-        
-        try:
-            logger.debug("Sending query to query engine...")
-            response = self.query_engine.query(question)
-            logger.debug(f"Raw response received: {response}")
-            logger.debug(f"Response type: {type(response)}")
-            
-            response_str = str(response)
-            logger.debug(f"Response as string: '{response_str}'")
-            logger.debug(f"Response length: {len(response_str)}")
-            
-            return response_str
-        except Exception as e:
-            logger.debug(f"Exception in answer_question: {e}")
-            return f"Error answering question: {e}"
+
 
     def get_suggestions(self, message: str, conversation_context: List[Dict], sender: str) -> Dict[str, List[str]]:
         """Generate AI suggestions and retrieve relevant knowledge base snippets for customer messages."""
@@ -601,35 +574,7 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         logger.debug(f"Final context string: '{final_context}'")
         return final_context
 
-    def chat(self, message: str) -> str:
-        """Chat with the system using conversation memory."""
-        logger.debug(f"chat method called with message: '{message}'")
-        
-        if not self.chat_engine:
-            logger.debug("Chat engine not available")
-            return "Chat engine is not available. Please ensure the knowledge base is loaded."
-        
-        try:
-            logger.debug("Sending message to chat engine...")
-            response = self.chat_engine.chat(message)
-            logger.debug(f"Raw chat response: {response}")
-            logger.debug(f"Chat response type: {type(response)}")
-            
-            response_str = str(response)
-            logger.debug(f"Chat response as string: '{response_str}'")
-            logger.debug(f"Chat response length: {len(response_str)}")
-            
-            return response_str
-        except Exception as e:
-            logger.debug(f"Exception in chat: {e}")
-            import traceback
-            traceback.print_exc()
-            return f"Error in chat: {e}"
 
-    def reset_conversation(self):
-        """Reset the conversation memory."""
-        if self.chat_engine:
-            self.chat_engine.reset()
 
     def get_system_status(self) -> Dict:
         """Get the status of system components."""
@@ -657,7 +602,6 @@ RESPOND: Answer only with "true" or "false" (no explanation needed).
         return {
             'knowledge_base_loaded': self.index is not None,
             'query_engine_ready': self.query_engine is not None,
-            'chat_engine_ready': self.chat_engine is not None,
             'documents_found': len(txt_files) > 0,
             'document_count': len(txt_files),
             'document_files': txt_files,

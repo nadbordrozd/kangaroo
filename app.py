@@ -57,27 +57,7 @@ def send_message():
     
     return jsonify(response_data)
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    """New endpoint for conversational chat with memory."""
-    data = request.json
-    message = data.get('message')
-    
-    if not message:
-        return jsonify({'success': False, 'error': 'Message is required'}), 400
-    
-    response = rag_system.chat(message)
-    
-    return jsonify({
-        'success': True,
-        'response': response
-    })
 
-@app.route('/reset_conversation', methods=['POST'])
-def reset_conversation():
-    """Reset the conversation memory."""
-    rag_system.reset_conversation()
-    return jsonify({'success': True, 'message': 'Conversation reset'})
 
 @app.route('/test_simple', methods=['GET'])
 def test_simple():
@@ -92,19 +72,7 @@ def test_simple():
         ]
     })
 
-@app.route('/test_question', methods=['POST'])
-def test_question():
-    """Test a simple question with debug output."""
-    data = request.json
-    question = data.get('question', 'What is this knowledge base about?')
-    
-    response = rag_system.answer_question(question)
-    
-    return jsonify({
-        'success': True,
-        'question': question,
-        'response': response
-    })
+
 
 
 
