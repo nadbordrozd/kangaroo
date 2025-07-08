@@ -4,3 +4,5 @@ numpy>=1.24.0
 scikit-learn>=1.3.0
 python-dotenv>=1.0.0
 llama-index
+haystack-ai>=2.0.0
+sentence-transformers>=2.2.0

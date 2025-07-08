@@ -1,18 +1,22 @@
 from flask import Flask, render_template, request, jsonify
-from rag_system import RAGSystem
+from assistant import Assistant
 import os
+import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# Initialize RAG system
-# similarity_top_k=5 means retrieve top 5 most relevant chunks for each query
-# persist_dir stores the cached embeddings to avoid re-computing on restart
-# use_reranker=True enables LLM-based relevance filtering of retrieved chunks (more API calls but better quality)
-# conversation_context_length=5 means use last 5 messages for conversation context
-rag_system = RAGSystem(similarity_top_k=5, persist_dir='./storage', use_reranker=True, conversation_context_length=5)
+# Initialize Assistant
+# The Assistant uses the new architecture with configurable models and async support
+assistant = Assistant(
+    knowledge_base_dir="knowledge_base",
+    cache_dir="storage",
+    embedding_model="text-embedding-3-small",
+    reranker_model="gpt-4.1",
+    generator_model="gpt-4.1"
+)
 
 @app.route('/')
 def index():
@@ -37,30 +41,48 @@ def send_message():
     # Get conversation context (last few messages)
     conversation_context = data.get('conversation_context', [])
     
-    # Generate AI suggestions based on the conversation
-    result = rag_system.get_suggestions(message, conversation_context, sender)
+    # Convert conversation context to the format expected by Assistant
+    messages = []
+    for msg in conversation_context:
+        role = "user" if msg.get('sender') == 'customer' else "assistant"
+        messages.append({
+            "role": role,
+            "content": msg.get('message', '')
+        })
     
-    # Extract suggestions, knowledge snippets, and summary from the result
-    if isinstance(result, dict):
-        suggestions = result.get('suggestions', [])
-        knowledge_snippets = result.get('knowledge_snippets', [])
-        summary = result.get('summary', 'No summary available')
-    else:
-        # Fallback for backward compatibility
-        suggestions = result if isinstance(result, list) else [str(result)]
+    # Add current message
+    messages.append({
+        "role": "user",
+        "content": message
+    })
+    
+    # Generate AI suggestions and summary using the new Assistant
+    try:
+        # Run async functions in sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Get suggestions and summary
+        suggestions, knowledge_snippets = loop.run_until_complete(assistant.get_suggestions(messages))
+        summary = loop.run_until_complete(assistant.get_summary(messages))
+        
+        loop.close()
+        
+        
+    except Exception as e:
+        print(f"Error processing message: {e}")
+        suggestions = ["I apologize, but I'm experiencing technical difficulties. Please try again."]
         knowledge_snippets = []
-        summary = 'No summary available'
+        summary = "Error processing request"
     
     response_data = {
         'success': True,
         'suggestions': suggestions,
-        'knowledge_snippets': knowledge_snippets,
+        'knowledge_snippets': [snippet['content'] for snippet in knowledge_snippets],
         'summary': summary
     }
     
     return jsonify(response_data)
-
-
 
 @app.route('/test_simple', methods=['GET'])
 def test_simple():
@@ -75,30 +97,31 @@ def test_simple():
         ]
     })
 
-
-
-
-
 @app.route('/system_status')
 def system_status():
     """Get the system status."""
-    status = rag_system.get_system_status()
-    return jsonify(status)
-
-@app.route('/clear_cache', methods=['POST'])
-def clear_cache():
-    """Clear the cached embeddings."""
     try:
-        rag_system.clear_cache()
-        return jsonify({
-            'success': True,
-            'message': 'Cache cleared successfully. Restart the app to rebuild embeddings.'
-        })
+        # Check if knowledge base is loaded
+        knowledge_store = assistant.knowledge_store
+        doc_count = len(knowledge_store.document_store.filter_documents())
+        
+        status = {
+            'status': 'healthy',
+            'knowledge_base_loaded': doc_count > 0,
+            'document_count': doc_count,
+            'embedding_model': assistant.embedding_model,
+            'reranker_model': assistant.reranker_model,
+            'generator_model': assistant.generator_model,
+            'cache_directory': assistant.cache_dir
+        }
+        return jsonify(status)
     except Exception as e:
         return jsonify({
-            'success': False,
+            'status': 'error',
             'error': str(e)
-        }), 500
+        })
+
+
 
 @app.route('/health')
 def health():
@@ -110,16 +133,12 @@ if __name__ == '__main__':
     print("1. Set your OPENAI_API_KEY in a .env file")
     print("2. Add your knowledge base files to the 'knowledge_base' folder") 
     print("3. The app will be available at http://localhost:5000")
-    print("Note: Now using OpenAI GPT-4 for both embeddings and text generation!")
-    print(f"Configuration: Retrieving top {rag_system.similarity_top_k} most relevant chunks per query")
-    print(f"Storage: Embeddings cached in '{rag_system.persist_dir}' directory")
-    if rag_system.use_reranker:
-        print("Reranker: ENABLED - Using GPT-4o-mini for relevance filtering (higher quality, more API calls)")
-    else:
-        print("Reranker: DISABLED - Using all retrieved chunks (faster, fewer API calls)")
+    print("Note: Now using the new Assistant architecture!")
+    print(f"Configuration:")
+    print(f"  - Embedding Model: {assistant.embedding_model}")
+    print(f"  - Reranker Model: {assistant.reranker_model}")
+    print(f"  - Generator Model: {assistant.generator_model}")
     
-    # Check system status on startup
-    status = rag_system.get_system_status()
-    print(f"System Status: {status}")
+
     
     app.run(debug=False, host='0.0.0.0', port=5000)
