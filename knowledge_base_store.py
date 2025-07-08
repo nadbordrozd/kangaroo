@@ -34,7 +34,7 @@ class KnowledgeBaseStore:
             model_name: Embedding model to use
         """
         self.knowledge_base_dir = Path(knowledge_base_dir)
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = Path(cache_dir) / model_name
         self.model_name = model_name
         
         # Create cache directory if it doesn't exist
