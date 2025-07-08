@@ -209,21 +209,37 @@ function updateAISuggestions(suggestions, knowledgeSnippets = [], summary = null
         knowledgeSnippetsElement.innerHTML = '';
         
         knowledgeSnippets.forEach((snippet, index) => {
-            console.log(`DEBUG: Adding knowledge snippet ${index}: ${snippet.length} characters`);
+            console.log(`DEBUG: Adding knowledge snippet ${index}:`, snippet);
             
             const snippetDiv = document.createElement('div');
             snippetDiv.className = 'knowledge-snippet';
             
+            // Handle both string snippets (old format) and object snippets (new format)
+            let content, fileName;
+            if (typeof snippet === 'string') {
+                content = snippet;
+                fileName = null;
+            } else if (snippet && typeof snippet === 'object') {
+                content = snippet.content || snippet;
+                fileName = snippet.file_name || null;
+            } else {
+                content = String(snippet);
+                fileName = null;
+            }
+            
             // Convert markdown-style formatting to HTML
-            const htmlSnippet = snippet
+            const htmlSnippet = content
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold text
                 .replace(/\n/g, '<br>'); // Line breaks
             
-            snippetDiv.innerHTML = `
-                <div class="snippet-content">
-                    <p>${htmlSnippet}</p>
-                </div>
-            `;
+            // Create the snippet HTML with optional file name header
+            let snippetHTML = '';
+            if (fileName) {
+                snippetHTML += `<div class="snippet-header"><strong>📄 ${fileName}</strong></div>`;
+            }
+            snippetHTML += `<div class="snippet-content"><p>${htmlSnippet}</p></div>`;
+            
+            snippetDiv.innerHTML = snippetHTML;
             knowledgeSnippetsElement.appendChild(snippetDiv);
         });
         

@@ -315,6 +315,16 @@ body {
     overflow-y: auto;
 }
 
+.snippet-header {
+    background: #f8f9fa;
+    margin: -12px -12px 8px -12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e1e5e9;
+    border-radius: 5px 5px 0 0;
+    font-size: 0.9em;
+    color: #495057;
+}
+
 .suggestion-actions {
     display: flex;
     gap: 8px;
