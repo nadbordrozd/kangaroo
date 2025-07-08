@@ -13,8 +13,8 @@ app = Flask(__name__)
 assistant = Assistant(
     knowledge_base_dir="knowledge_base",
     cache_dir="storage",
-    embedding_model="text-embedding-3-small",
-    reranker_model="gpt-4.1",
+    embedding_model="text-embedding-3-large",
+    reranker_model="gpt-4.1-mini",
     generator_model="gpt-4.1"
 )
 
@@ -78,7 +78,7 @@ def send_message():
     response_data = {
         'success': True,
         'suggestions': suggestions,
-        'knowledge_snippets': [snippet['content'] for snippet in knowledge_snippets],
+        'knowledge_snippets': knowledge_snippets,  # Send full snippet objects with content and file_name
         'summary': summary
     }
     
